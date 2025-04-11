@@ -1,8 +1,8 @@
-[@elizaos/core v0.25.8](../index.md) / handleProvider
+[@elizaos/core v0.25.7](../index.md) / handleProvider
 
 # Function: handleProvider()
 
-> **handleProvider**(`options`): `Promise`\<`GenerationResult`\>
+> **handleProvider**(`options`): `Promise`\<`GenerateObjectResult`\<`unknown`\>\>
 
 Handles AI generation based on the specified provider.
 
@@ -14,10 +14,10 @@ Configuration options specific to the provider.
 
 ## Returns
 
-`Promise`\<`GenerationResult`\>
+`Promise`\<`GenerateObjectResult`\<`unknown`\>\>
 
 - A promise that resolves to an array of generated objects.
 
 ## Defined in
 
-[packages/core/src/generation.ts:2238](https://github.com/elizaOS/eliza/blob/main/packages/core/src/generation.ts#L2238)
+[packages/core/src/generation.ts:2191](https://github.com/elizaOS/eliza/blob/main/packages/core/src/generation.ts#L2191)

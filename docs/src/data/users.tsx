@@ -3,6 +3,7 @@ import {registryUsers} from './registry-users';
 
 export type TagType =
   | 'favorite' 
+  | 'opensource'
   | 'adapter'
   | 'client'
   | 'plugin';
@@ -27,6 +28,11 @@ export const Tags: {[type in TagType]: Tag} = {
     label: 'Favorite',
     description: 'Our favorite projects that you must check out!',
     color: '#e9669e',
+  },
+  opensource: {
+    label: 'Open Source',
+    description: 'Open source projects can be useful for inspiration!',
+    color: '#39ca30',
   },
   adapter: {
     label: 'Adapter',

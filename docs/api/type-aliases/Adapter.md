@@ -1,10 +1,8 @@
-[@elizaos/core v0.25.8](../index.md) / Adapter
+[@elizaos/core v0.25.7](../index.md) / Adapter
 
 # Type Alias: Adapter
 
 > **Adapter**: `object`
-
-Database adapter initialization
 
 ## Type declaration
 
@@ -12,7 +10,7 @@ Database adapter initialization
 
 > **init**: (`runtime`) => [`IDatabaseAdapter`](../interfaces/IDatabaseAdapter.md) & [`IDatabaseCacheAdapter`](../interfaces/IDatabaseCacheAdapter.md)
 
-Initialize the adapter
+Initialize adapter
 
 #### Parameters
 
@@ -24,4 +22,4 @@ Initialize the adapter
 
 ## Defined in
 
-[packages/core/src/types.ts:642](https://github.com/elizaOS/eliza/blob/main/packages/core/src/types.ts#L642)
+[packages/core/src/types.ts:635](https://github.com/elizaOS/eliza/blob/main/packages/core/src/types.ts#L635)

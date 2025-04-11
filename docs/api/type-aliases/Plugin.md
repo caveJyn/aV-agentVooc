@@ -1,4 +1,4 @@
-[@elizaos/core v0.25.8](../index.md) / Plugin
+[@elizaos/core v0.25.7](../index.md) / Plugin
 
 # Type Alias: Plugin
 
@@ -13,12 +13,6 @@ Plugin for extending agent functionality
 > **name**: `string`
 
 Plugin name
-
-### npmName?
-
-> `optional` **npmName**: `string`
-
-Plugin npm name
 
 ### config?
 
@@ -72,20 +66,6 @@ Optional clients
 
 Optional adapters
 
-### handlePostCharacterLoaded()?
-
-> `optional` **handlePostCharacterLoaded**: (`char`) => `Promise`\<[`Character`](Character.md)\>
-
-Optional post charactor processor handler
-
-#### Parameters
-
-• **char**: [`Character`](Character.md)
-
-#### Returns
-
-`Promise`\<[`Character`](Character.md)\>
-
 ## Defined in
 
-[packages/core/src/types.ts:650](https://github.com/elizaOS/eliza/blob/main/packages/core/src/types.ts#L650)
+[packages/core/src/types.ts:643](https://github.com/elizaOS/eliza/blob/main/packages/core/src/types.ts#L643)

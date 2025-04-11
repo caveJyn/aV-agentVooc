@@ -1,4 +1,4 @@
-[@elizaos/core v0.25.8](../index.md) / GenerationOptions
+[@elizaos/core v0.25.7](../index.md) / GenerationOptions
 
 # Interface: GenerationOptions
 
@@ -12,7 +12,7 @@ Configuration options for generating objects with a model.
 
 #### Defined in
 
-[packages/core/src/generation.ts:2131](https://github.com/elizaOS/eliza/blob/main/packages/core/src/generation.ts#L2131)
+[packages/core/src/generation.ts:2063](https://github.com/elizaOS/eliza/blob/main/packages/core/src/generation.ts#L2063)
 
 ***
 
@@ -22,7 +22,7 @@ Configuration options for generating objects with a model.
 
 #### Defined in
 
-[packages/core/src/generation.ts:2132](https://github.com/elizaOS/eliza/blob/main/packages/core/src/generation.ts#L2132)
+[packages/core/src/generation.ts:2064](https://github.com/elizaOS/eliza/blob/main/packages/core/src/generation.ts#L2064)
 
 ***
 
@@ -32,7 +32,7 @@ Configuration options for generating objects with a model.
 
 #### Defined in
 
-[packages/core/src/generation.ts:2133](https://github.com/elizaOS/eliza/blob/main/packages/core/src/generation.ts#L2133)
+[packages/core/src/generation.ts:2065](https://github.com/elizaOS/eliza/blob/main/packages/core/src/generation.ts#L2065)
 
 ***
 
@@ -42,7 +42,7 @@ Configuration options for generating objects with a model.
 
 #### Defined in
 
-[packages/core/src/generation.ts:2134](https://github.com/elizaOS/eliza/blob/main/packages/core/src/generation.ts#L2134)
+[packages/core/src/generation.ts:2066](https://github.com/elizaOS/eliza/blob/main/packages/core/src/generation.ts#L2066)
 
 ***
 
@@ -52,7 +52,7 @@ Configuration options for generating objects with a model.
 
 #### Defined in
 
-[packages/core/src/generation.ts:2135](https://github.com/elizaOS/eliza/blob/main/packages/core/src/generation.ts#L2135)
+[packages/core/src/generation.ts:2067](https://github.com/elizaOS/eliza/blob/main/packages/core/src/generation.ts#L2067)
 
 ***
 
@@ -62,7 +62,7 @@ Configuration options for generating objects with a model.
 
 #### Defined in
 
-[packages/core/src/generation.ts:2136](https://github.com/elizaOS/eliza/blob/main/packages/core/src/generation.ts#L2136)
+[packages/core/src/generation.ts:2068](https://github.com/elizaOS/eliza/blob/main/packages/core/src/generation.ts#L2068)
 
 ***
 
@@ -72,7 +72,7 @@ Configuration options for generating objects with a model.
 
 #### Defined in
 
-[packages/core/src/generation.ts:2137](https://github.com/elizaOS/eliza/blob/main/packages/core/src/generation.ts#L2137)
+[packages/core/src/generation.ts:2069](https://github.com/elizaOS/eliza/blob/main/packages/core/src/generation.ts#L2069)
 
 ***
 
@@ -82,7 +82,7 @@ Configuration options for generating objects with a model.
 
 #### Defined in
 
-[packages/core/src/generation.ts:2138](https://github.com/elizaOS/eliza/blob/main/packages/core/src/generation.ts#L2138)
+[packages/core/src/generation.ts:2070](https://github.com/elizaOS/eliza/blob/main/packages/core/src/generation.ts#L2070)
 
 ***
 
@@ -92,4 +92,4 @@ Configuration options for generating objects with a model.
 
 #### Defined in
 
-[packages/core/src/generation.ts:2139](https://github.com/elizaOS/eliza/blob/main/packages/core/src/generation.ts#L2139)
+[packages/core/src/generation.ts:2071](https://github.com/elizaOS/eliza/blob/main/packages/core/src/generation.ts#L2071)

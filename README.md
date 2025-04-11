@@ -52,14 +52,47 @@
 
 > **Note for Windows Users:** [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) is required.
 
-### Use the Starter (Recommended for Agent Creation)
+> You'll want to create a [Telegram Bot](https://core.telegram.org/bots#how-do-i-create-a-bot).
 
-Full steps and documentation can be found in the [Eliza Starter Repository](https://github.com/elizaOS/eliza-starter).
+> You'll want a personal Solana RPC URL. You can get one from [Alchemy](https://www.alchemy.com/) or [Quicknode](https://www.quicknode.com/).
+
+> You'll need an API key from [OpenAI](https://auth.openai.com/log-in) (you can optionally use a different provider like Anthropic, Grok, etc.)
+
+> **OPTIONAL:** Create a [Birdeye](https://bds.birdeye.so/) account and obtain an API key.
+
+### Starting Up
+
+#### 1. Clone/download the repo
+
+#### 2. Install Dependencies:
 ```bash
-git clone https://github.com/elizaos/eliza-starter.git
-cd eliza-starter
+`pnpm install`
+```
+
+#### 3. Build Project:
+```bash
+`pnpm build`
+```
+
+#### 4. Create .env:
+```bash
 cp .env.example .env
-pnpm i && pnpm build && pnpm start
+```
+
+For a basic start you'll want to fill out the following fields:
+- **TELEGRAM_BOT_TOKEN**
+- **OPENAI_API_KEY**
+- **SOLANA_PRIVATE_KEY**
+- **SOLANA_PUBLIC_KEY**
+- **SOLANA_RPC_URL**
+
+Optional fields:
+
+- **BIRDEYE_API_KEY**
+
+#### 5. Start Eliza
+```bash
+pnpm start
 ```
 
 ### Manually Start Eliza (Only recommended for plugin or platform development)
@@ -155,48 +188,6 @@ You may need to install Sharp. If you see an error when starting up, try install
 
 ```
 pnpm install --include=optional sharp
-```
-
----
-
-## Using Your Custom Plugins
-Plugins that are not in the official registry for ElizaOS can be used as well. Here's how:
-
-### Installation
-
-1. Upload the custom plugin to the packages folder:
-
-```
-packages/
-├─plugin-example/
-├── package.json
-├── tsconfig.json
-├── src/
-│   ├── index.ts        # Main plugin entry
-│   ├── actions/        # Custom actions
-│   ├── providers/      # Data providers
-│   ├── types.ts        # Type definitions
-│   └── environment.ts  # Configuration
-├── README.md
-└── LICENSE
-```
-
-2. Add the custom plugin to your project's dependencies in the agent's package.json:
-
-```json
-{
-  "dependencies": {
-    "@elizaos/plugin-example": "workspace:*"
-  }
-}
-```
-
-3. Import the custom plugin to your agent's character.json
-
-```json
-  "plugins": [
-    "@elizaos/plugin-example",
-  ],
 ```
 
 ---

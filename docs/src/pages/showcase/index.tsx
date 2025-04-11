@@ -4,25 +4,15 @@ import { type User, sortedUsers } from '@site/src/data/users';
 import ShowcaseSearchBar from './_components/ShowcaseSearchBar';
 import ShowcaseCards from './_components/ShowcaseCards';
 import ShowcaseFilters from './_components/ShowcaseFilters';
-import Link from '@docusaurus/Link';
-import styles from './_components/ShowcaseLayout/styles.module.css';
 
-const TITLE = 'elizaOS Packages';
-const DESCRIPTION = 'Discover the awesome plugins in the eliza ecosystem.';
-const GITHUB_LINK = 'https://github.com/elizaos-plugins/registry';
+const TITLE = 'Plugin Showcase';
+const DESCRIPTION = 'Discover the awesome plugins in our ecosystem';
 
 function ShowcaseHeader() {
   return (
     <section className="margin-top--lg margin-bottom--lg text--center">
       <h1>{TITLE}</h1>
       <p>{DESCRIPTION}</p>
-      <div className={styles.submitButton}>
-        <Link
-          className="button button--primary"
-          to={GITHUB_LINK}>
-          Submit your plugin
-        </Link>
-      </div>
     </section>
   );
 }
@@ -72,10 +62,6 @@ export default function Showcase(): JSX.Element {
     setOperator(op => op === 'OR' ? 'AND' : 'OR');
   };
 
-  const clearSearch = () => {
-    setSearchValue('');
-  };
-
   const filteredUsers = useMemo(() => {
     return filterUsers(sortedUsers, searchValue, selectedTags, operator);
   }, [searchValue, selectedTags, operator]);
@@ -84,27 +70,18 @@ export default function Showcase(): JSX.Element {
     <Layout title={TITLE} description={DESCRIPTION}>
       <main className="margin-vert--lg">
         <ShowcaseHeader />
-        
-        <div className="container">
-          <div className={styles.filtersContainer}>
-            <div className={styles.filtersRow}>
-              <ShowcaseFilters
-                selectedTags={selectedTags}
-                toggleTag={toggleTag}
-                operator={operator}
-                toggleOperator={toggleOperator}
-              />
-              <ShowcaseSearchBar 
-                onChange={setSearchValue}
-                value={searchValue}
-              />
-            </div>
-            <div className={styles.tagsRow}>
-              {/* Tag buttons will be rendered inside ShowcaseFilters component */}
-            </div>
-          </div>
+        <ShowcaseFilters
+          selectedTags={selectedTags}
+          toggleTag={toggleTag}
+          operator={operator}
+          toggleOperator={toggleOperator}
+        />
+        <div className="container flex justify-end">
+          <ShowcaseSearchBar 
+            onChange={setSearchValue}
+            value={searchValue}
+          />
         </div>
-        
         <ShowcaseCards users={filteredUsers} />
       </main>
     </Layout>

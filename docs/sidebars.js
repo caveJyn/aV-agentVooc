@@ -20,11 +20,6 @@ const sidebars = {
                     id: "faq",
                     label: "❓ FAQ",
                 },
-                {
-                    type: "doc",
-                    id: "changelog",
-                    label: "CHANGELOG",
-                },
 		{
 		    type: "category",
 		    label: "Tutorials",
@@ -104,11 +99,6 @@ const sidebars = {
                 },
                 {
                     type: "doc",
-                    id: "core/plugins",
-                    label: "Plugins",
-                },
-                {
-                    type: "doc",
                     id: "core/providers",
                     label: "Providers",
                 },
@@ -141,6 +131,11 @@ const sidebars = {
                 },
                 {
                     type: "doc",
+                    id: "guides/docker-setup",
+                    label: "Docker Setup",
+                },
+                {
+                    type: "doc",
                     id: "guides/remote-deployment",
                     label: "Deployment",
                 },
@@ -148,6 +143,11 @@ const sidebars = {
                     type: "doc",
                     id: "guides/fine-tuning",
                     label: "Fine-tuning",
+                },
+                {
+                    type: "doc",
+                    id: "guides/advanced",
+                    label: "Advanced Usage",
                 },
                 {
                     type: "doc",
@@ -161,6 +161,11 @@ const sidebars = {
                 },
                 {
                     type: "doc",
+                    id: "guides/local-development",
+                    label: "Local Development",
+                },
+                {
+                    type: "doc",
                     id: "guides/wsl",
                     label: "WSL Setup",
                 },
@@ -171,6 +176,11 @@ const sidebars = {
             label: "🎓 Advanced Topics",
             collapsed: false,
             items: [
+                {
+                    type: "doc",
+                    id: "advanced/infrastructure",
+                    label: "Infrastructure",
+                },
                 {
                     type: "doc",
                     id: "advanced/trust-engine",
@@ -190,6 +200,18 @@ const sidebars = {
                     type: "doc",
                     id: "advanced/verified-inference",
                     label: "Verified Inference",
+                },
+            ],
+        },
+        {
+            type: "category",
+            label: "📦 Packages",
+            collapsed: false,
+            items: [
+                {
+                    type: "doc",
+                    id: "packages/plugins",
+                    label: "Plugin System",
                 },
             ],
         },

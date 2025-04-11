@@ -61,7 +61,7 @@ cat << "EOF"
 
 EOF
 
-# 2 seconds delay to read the message above
+# 2 seconds delay
 for i in {1..5}; do
   echo -n "."
   sleep 0.4
@@ -74,7 +74,7 @@ if [ ! -d "$PACKAGES_DIR" ]; then
 fi
 
 # List of working folders to watch (relative to $PACKAGES_DIR)
-WORKING_FOLDERS=() # Core is handled separately
+WORKING_FOLDERS=("client-direct") # Core is handled separately
 
 # Initialize an array to hold package-specific commands
 COMMANDS=()
@@ -112,10 +112,8 @@ if [ -d "./agent" ]; then
   for FOLDER in "${WORKING_FOLDERS[@]}"; do
     WATCH_PATHS+=("--watch './packages/$FOLDER/dist'")
   done
-  # the initial sleep helps newer machines (ryzen 7xxx+) cycle faster
-  # older machine won't need it but they will be delayed 1 sec
-  # favoring newer machine for development
-  COMMANDS+=("echo 'boot elizaOS' && sleep 1 && echo 'starting nodemon' && nodemon --verbose ${WATCH_PATHS[@]} -e js,json,map --delay 2 --exec 'pnpm --dir agent dev -- $*'")
+
+  COMMANDS+=("nodemon ${WATCH_PATHS[@]} -e js,json,map --delay 2 --exec 'pnpm --dir agent dev -- $*'")
 else
   echo "Warning: 'agent' directory not found."
 fi

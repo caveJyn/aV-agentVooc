@@ -1,6 +1,5 @@
-import React from 'react';
+import React, {useState} from 'react';
 import clsx from 'clsx';
-import { X } from 'lucide-react';
 import {TagList, Tags, type TagType} from '../../../../data/users';
 import styles from './styles.module.css';
 
@@ -50,48 +49,24 @@ export default function ShowcaseFilters({
   operator: 'AND' | 'OR';
   toggleOperator: () => void;
 }): JSX.Element {
-  const clearAllFilters = () => {
-    // Clear all selected tags by toggling each one that's currently selected
-    selectedTags.forEach(tag => toggleTag(tag));
-  };
-
-  const hasActiveFilters = selectedTags.length > 0;
-
   return (
-    <>
-      <div className={styles.filtersWrapper}>
-        <div className={styles.filterHeader}>
-          <h3 className={styles.filterTitle}>Filters</h3>
-          
-          <div className={styles.operatorToggle}>
-            <span>Combine:</span>
+    <section className="container margin-top--l margin-bottom--lg">
+      <div className={styles.filterHeader}>
+        <div className={styles.filterTitle}>
+          <h2>
+            Filters
             <button
-              className={clsx(styles.operatorSwitch, {
-                [styles.operatorSwitchAnd]: operator === 'AND'
-              })}
+              className={styles.operatorButton}
               onClick={toggleOperator}
-              title={operator === 'OR' ? 'Change to AND (all filters must match)' : 'Change to OR (any filter can match)'}
+              title={operator === 'OR' ? 'Change to AND' : 'Change to OR'}
             >
-              <span className={styles.switchKnob}></span>
-              <span className={styles.switchLabel}>AND</span>
+              {operator}
             </button>
-          </div>
-          
-          <button 
-            className={styles.clearButton}
-            onClick={clearAllFilters}
-            disabled={!hasActiveFilters}
-            aria-label="Clear all filters"
-            title="Clear all filters"
-          >
-            <X size={14} />
-            Clear
-          </button>
+          </h2>
         </div>
       </div>
-
       <ul className={clsx('clean-list', styles.tagList)}>
-        {TagList.filter(tag => tag).map((tag) => {
+        {TagList.filter(tag => tag !== 'favorite').map((tag) => {
           const {label, description, color} = Tags[tag];
           return (
             <ShowcaseTagSelect
@@ -106,6 +81,6 @@ export default function ShowcaseFilters({
           );
         })}
       </ul>
-    </>
+    </section>
   );
 }

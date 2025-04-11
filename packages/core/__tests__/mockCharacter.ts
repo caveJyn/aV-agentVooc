@@ -1,4 +1,4 @@
-import { type Character, ModelProviderName } from "../types.ts";
+import { Character, ModelProviderName } from "@elizaos/core";
 
 export const mockCharacter: Character = {
     name: "Eliza",

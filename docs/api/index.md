@@ -1,4 +1,4 @@
-# @elizaos/core v0.25.8
+# @elizaos/core v0.25.7
 
 ## Enumerations
 
@@ -143,7 +143,6 @@
 - [generateText](functions/generateText.md)
 - [generateShouldRespond](functions/generateShouldRespond.md)
 - [splitChunks](functions/splitChunks.md)
-- [splitText](functions/splitText.md)
 - [generateTrueOrFalse](functions/generateTrueOrFalse.md)
 - [generateTextArray](functions/generateTextArray.md)
 - [generateObjectDeprecated](functions/generateObjectDeprecated.md)
