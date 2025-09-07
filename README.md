@@ -28,7 +28,7 @@
 
 ## Video Tutorials
 
-[AI Agent Dev School](https://www.youtube.com/watch?v=ArptLpQiKfI&list=PLx5pnFXdPTRzWla0RaOxALTSTnVq53fKL)
+[Coming Soon]()
 
 ## 🚀 Quick Start
 
@@ -181,7 +181,7 @@ pnpm install --include=optional sharp
 
 ## Citation
 
-We now have a [paper](https://arxiv.org/pdf/2501.06781) you can cite for the Eliza OS:
+There is now a [paper](https://arxiv.org/pdf/2501.06781) you can cite for the parent project Eliza OS:
 ```bibtex
 @article{walters2025eliza,
   title={Eliza: A Web3 friendly AI Agent Operating System},
