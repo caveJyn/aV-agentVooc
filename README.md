@@ -28,7 +28,7 @@
 
 ## Video Tutorials
 
-[Coming Soon]()
+[Video Demo](https://www.linkedin.com/posts/kaleem-khan-705579138_a-brief-walk-through-of-how-the-system-works-activity-7370556861495832576-9A10?utm_source=share&utm_medium=member_desktop&rcm=ACoAACGLM7UBPBbAesoTYSok3w0nOgEqDXqnLLw)
 
 ## 🚀 Quick Start
 
