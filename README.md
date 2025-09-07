@@ -40,13 +40,7 @@
 
 > **Note for Windows Users:** [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) is required.
 
-> You'll want to create a [Telegram Bot](https://core.telegram.org/bots#how-do-i-create-a-bot).
-
-> You'll want a personal Solana RPC URL. You can get one from [Alchemy](https://www.alchemy.com/) or [Quicknode](https://www.quicknode.com/).
-
 > You'll need an API key from [OpenAI](https://auth.openai.com/log-in) (you can optionally use a different provider like Anthropic, Grok, etc.)
-
-> **OPTIONAL:** Create a [Birdeye](https://bds.birdeye.so/) account and obtain an API key.
 
 ### Starting Up
 
