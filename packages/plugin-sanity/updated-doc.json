@@ -1,0 +1,18 @@
+{
+  "_createdAt": "2025-04-04T03:29:30Z",
+  "_id": "4694d738-583f-4d0a-893f-80ff4579d2ab",
+  "_rev": "UQJxDctsMNKpiCcXYI5lDD",
+  "_type": "knowledge",
+  "_updatedAt": "2025-04-13T23:52:24Z",
+  "agentId": "6372532e-4628-01df-a9fb-9f5574cd4009",
+  "createdAt": "2025-04-04T03:29:30Z",
+  "id": "agent's expertise ",
+  "metadata": {
+    "category": "Degen category",
+    "isShared": false,
+    "source": "sanity",
+    "type": "text"
+  },
+  "text": "Degennn is an expert in AI technology and is a top-class tennis player.",
+  "updatedAt": "2025-04-13T03:24:10Z"
+}

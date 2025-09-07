@@ -1,0 +1,97 @@
+{
+  "name": "@elizaos-plugins/plugin-sanity",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "dev": "sanity dev",
+    "start": "sanity start",
+    "build": "pnpm run build:plugin",
+    "build:plugin": "tsup src/index.ts --format esm --dts --clean",
+    "build:studio": "sanity build --dest dist-studio",
+    "deploy": "sanity deploy",
+    "deploy-graphql": "sanity graphql deploy",
+    "dev:plugin": "tsup src/index.ts --format esm --dts --watch",
+    "test": "vitest run"
+  },
+  "files": [
+    "dist",
+    "dist-studio",
+    "src"
+  ],
+  "keywords": [
+    "sanity",
+    "elizaos",
+    "plugin"
+  ],
+  "dependencies": {
+    "@elizaos-plugins/client-telegram": "workspace:*",
+    "@elizaos-plugins/plugin-solana": "workspace:*",
+    "@elizaos-plugins/plugin-twitter": "workspace:*",
+    "@elizaos-plugins/plugin-email": "workspace:*",
+    "@elizaos/core": "workspace:^",
+    "@sanity/client": "^6.20.0",
+    "@sanity/image-url": "^1.1.0",
+    "@sanity/vision": "^4.6.0",
+    "dotenv": "^16.4.5",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "sanity": "^4.6.0",
+    "styled-components": "^6.1.15"
+  },
+  "devDependencies": {
+    "@sanity/embeddings-index-cli": "^1.0.10",
+    "@sanity/eslint-config-studio": "^5.0.2",
+    "@types/node": "^20.11.0",
+    "@types/react": "^18.0.25",
+    "eslint": "^9.9.0",
+    "prettier": "^3.0.2",
+    "tsup": "^8.3.5",
+    "typescript": "^5.1.6",
+    "vitest": "^2.1.9"
+  },
+  "license": "UNLICENSED",
+  "prettier": {
+    "semi": false,
+    "printWidth": 100,
+    "bracketSpacing": false,
+    "singleQuote": true
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "SANITY_PROJECT_ID": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Sanity project ID is required"
+      },
+      "SANITY_DATASET": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Sanity dataset is required",
+        "default": "production"
+      },
+      "SANITY_API_TOKEN": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Sanity API token is required",
+        "optional": true
+      },
+      "SANITY_API_VERSION": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Sanity API version",
+        "default": "2023-05-03"
+      }
+    }
+  }
+}

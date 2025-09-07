@@ -1,5 +1,5 @@
 import { readFile } from "fs/promises";
-import { join } from "path";
+import { join, extname } from "path";
 import { names, uniqueNamesGenerator } from "unique-names-generator";
 import { v4 as uuidv4 } from "uuid";
 import {
@@ -36,7 +36,7 @@ import {
     type IRAGKnowledgeManager,
     // type IVerifiableInferenceAdapter,
     type KnowledgeItem,
-    // RAGKnowledgeItem,
+    RAGKnowledgeItem,
     //Media,
     ModelClass,
     ModelProviderName,
@@ -53,6 +53,8 @@ import {
     type Memory,
     type DirectoryItem,
     type ClientInstance,
+    type IPdfService,
+    type SanityReference
 } from "./types.ts";
 import { stringToUuid } from "./uuid.ts";
 import { glob } from "glob";
@@ -172,7 +174,9 @@ export class AgentRuntime implements IAgentRuntime {
     ragKnowledgeManager: IRAGKnowledgeManager;
 
     private readonly knowledgeRoot: string;
-
+    public getKnowledgeRoot(): string {
+        return this.knowledgeRoot;
+    }
     services: Map<ServiceType, Service> = new Map();
     memoryManagers: Map<string, IMemoryManager> = new Map();
     cacheManager: ICacheManager;
@@ -280,19 +284,18 @@ export class AgentRuntime implements IAgentRuntime {
             characterModelProvider: opts.character?.modelProvider,
         });
 
-        elizaLogger.debug(
+        elizaLogger.info(
             `[AgentRuntime] Process working directory: ${process.cwd()}`,
         );
 
         // Define the root path once
         this.knowledgeRoot = join(
             process.cwd(),
-            "..",
             "characters",
             "knowledge",
         );
 
-        elizaLogger.debug(
+        elizaLogger.info(
             `[AgentRuntime] Process knowledgeRoot: ${this.knowledgeRoot}`,
         );
 
@@ -500,38 +503,44 @@ export class AgentRuntime implements IAgentRuntime {
 
             if (this.character.settings.ragKnowledge) {
                 // Type guards with logging for each knowledge type
-                const [directoryKnowledge, pathKnowledge, stringKnowledge] =
-                    this.character.knowledge.reduce(
-                        (acc, item) => {
-                            if (typeof item === "object") {
-                                if (isDirectoryItem(item)) {
-                                    elizaLogger.debug(
-                                        `[RAG Filter] Found directory item: ${JSON.stringify(item)}`,
-                                    );
-                                    acc[0].push(item);
-                                } else if ("path" in item) {
-                                    elizaLogger.debug(
-                                        `[RAG Filter] Found path item: ${JSON.stringify(item)}`,
-                                    );
-                                    acc[1].push(item);
-                                }
-                            } else if (typeof item === "string") {
-                                elizaLogger.debug(
-                                    `[RAG Filter] Found string item: ${item.slice(0, 100)}...`,
-                                );
-                                acc[2].push(item);
-                            }
-                            return acc;
-                        },
-                        [[], [], []] as [
-                            Array<{ directory: string; shared?: boolean }>,
-                            Array<{ path: string; shared?: boolean }>,
-                            Array<string>,
-                        ],
-                    );
-
+                const [directoryKnowledge, pathKnowledge, stringKnowledge, sanityKnowledgeReference] =
+                  this.character.knowledge.reduce(
+                    (acc, item) => {
+                      if (typeof item === "string") {
+                        elizaLogger.debug(
+                          `[RAG Filter] Found string item: ${item.slice(0, 100)}...`,
+                        );
+                        acc[2].push(item);
+                      } else if (typeof item === "object") {
+                        if (isDirectoryItem(item)) {
+                          elizaLogger.debug(
+                            `[RAG Filter] Found directory item: ${JSON.stringify(item)}`,
+                          );
+                          acc[0].push(item);
+                        } else if ("path" in item) {
+                          elizaLogger.debug(
+                            `[RAG Filter] Found path item: ${JSON.stringify(item)}`,
+                          );
+                          acc[1].push(item);
+                        } else if ("_type" in item && item._type === "reference") {
+                          elizaLogger.debug(
+                            `[RAG Filter] Found Sanity reference item: ${JSON.stringify(item)}`,
+                          );
+                          acc[3].push(item);
+                        }
+                      }
+                      return acc;
+                    },
+                    [[], [], [], []] as [
+                      DirectoryItem[],
+                      Array<{ path: string; shared?: boolean }>,
+                      string[],
+                      SanityReference[]
+                    ]
+                  );
+        
                 elizaLogger.info(
-                    `[RAG Summary] Found ${directoryKnowledge.length} directories, ${pathKnowledge.length} paths, and ${stringKnowledge.length} strings`,
+                  `[RAG Summary] Found ${directoryKnowledge.length} directories, ${pathKnowledge.length} paths, ${stringKnowledge.length} strings, ${sanityKnowledgeReference.length} Sanity references`,
                 );
 
                 // Process each type of knowledge
@@ -560,6 +569,45 @@ export class AgentRuntime implements IAgentRuntime {
                     );
                     await this.processCharacterRAGKnowledge(stringKnowledge);
                 }
+                // if (sanityKnowledgeReference.length > 0) {
+                //     elizaLogger.info(
+                //       `[RAG Process] Processing Sanity reference knowledge`,
+                //     );
+                //     for (const ref of sanityKnowledgeReference) {
+                //       try {
+                //         const sanityModule = await import("@elizaos-plugins/plugin-sanity").catch((err) => {
+                //           elizaLogger.error(`Failed to load Sanity plugin for ref ${ref._ref}:`, err);
+                //           return null;
+                //         });
+                //         if (!sanityModule) {
+                //           elizaLogger.warn(`Sanity plugin unavailable, skipping ref ${ref._ref}`);
+                //           continue;
+                //         }
+                //         const sanityItems = await sanityModule.loadSanityKnowledge({
+                //           agentId: this.agentId,
+                //           query: `*[_id == "${ref._ref}"]`,
+                //         });
+                //         elizaLogger.info(`Fetched Sanity items for ref ${ref._ref}:`, {
+                //           count: sanityItems.length,
+                //           items: sanityItems.map((item: RAGKnowledgeItem) => ({
+                //             id: item.id,
+                //             text: item.content.text.slice(0, 50),
+                //           })),
+                //         });
+                //         if (sanityItems.length > 0) {
+                //           await this.ragKnowledgeManager.addSanityKnowledge(sanityItems);
+                //           elizaLogger.info(`Processed Sanity reference: ${ref._ref}`);
+                //         } else {
+                //           elizaLogger.warn(`No Sanity items found for ref ${ref._ref}`);
+                //         }
+                //       } catch (error) {
+                //         elizaLogger.error(
+                //           `Failed to process Sanity reference ${ref._ref}:`,
+                //           error
+                //         );
+                //       }
+                //     }
+                //   }
             } else {
                 // Non-RAG mode: only process string knowledge
                 const stringKnowledge = this.character.knowledge.filter(
@@ -599,6 +647,32 @@ export class AgentRuntime implements IAgentRuntime {
         // we don't need to unregister with directClient
         // don't need to worry about knowledge
     }
+
+
+    
+      async addKnowledge(
+        knowledge:
+          | string
+          | { path: string }
+          | { sanity: { query: string; projectId?: string; dataset?: string }; items: RAGKnowledgeItem[] },
+        isShared: boolean = false
+      ): Promise<void> {
+        try {
+          if (typeof knowledge === "string") {
+            await this.ragKnowledgeManager.addStringKnowledge(knowledge, isShared);
+          } else if ("path" in knowledge) {
+            await this.ragKnowledgeManager.addFileKnowledge(knowledge.path, isShared);
+          } else if ("sanity" in knowledge) {
+            await this.ragKnowledgeManager.addSanityKnowledge(knowledge.items);
+          } else {
+            throw new Error("Invalid knowledge format");
+          }
+          elizaLogger.success(`Added knowledge for ${this.character.name}`);
+        } catch (error) {
+          elizaLogger.error(`Failed to add knowledge for ${this.character.name}:`, error);
+          throw error;
+        }
+      }
 
     /**
      * Processes character knowledge by creating document memories and fragment memories.
@@ -842,7 +916,7 @@ export class AgentRuntime implements IAgentRuntime {
         shared?: boolean;
     }) {
         if (!dirConfig.directory) {
-            elizaLogger.error("[RAG Directory] No directory specified");
+            elizaLogger.info("[RAG Directory] No directory specified");
             return;
         }
 
@@ -854,13 +928,13 @@ export class AgentRuntime implements IAgentRuntime {
             // Check if directory exists
             const dirExists = existsSync(dirPath);
             if (!dirExists) {
-                elizaLogger.error(
+                elizaLogger.info(
                     `[RAG Directory] Directory does not exist: ${sanitizedDir}`,
                 );
                 return;
             }
 
-            elizaLogger.debug(`[RAG Directory] Searching in: ${dirPath}`);
+            elizaLogger.info(`[RAG Directory] Searching in: ${dirPath}`);
             // Use glob to find all matching files in directory
             const files = await glob("**/*.{md,txt,pdf}", {
                 cwd: dirPath,
@@ -941,7 +1015,6 @@ export class AgentRuntime implements IAgentRuntime {
             throw error; // Re-throw to let caller handle it
         }
     }
-
     getSetting(key: string) {
         // check if the key is in the character.settings.secrets object
         if (this.character.settings?.secrets?.[key]) {
@@ -1496,10 +1569,24 @@ Text: ${attachment.text}
                 .map((msg) => msg.content.text)
                 .join(" ");
 
+                elizaLogger.info(`[State Knowledge] Querying knowledge for message`, {
+                    messageText: message.content.text.slice(0, 200),
+                    recentContext: recentContext.slice(0, 200),
+                });
+
             knowledgeData = await this.ragKnowledgeManager.getKnowledge({
                 query: message.content.text,
                 conversationContext: recentContext,
                 limit: 8,
+            });
+
+            elizaLogger.info(`[State Knowledge] Retrieved knowledge items`, {
+                count: knowledgeData.length,
+                items: knowledgeData.map(item => ({
+                    id: item.id,
+                    text: item.content.text.slice(0, 100),
+                    metadata: item.content.metadata,
+                })),
             });
 
             formattedKnowledge = formatKnowledge(knowledgeData);

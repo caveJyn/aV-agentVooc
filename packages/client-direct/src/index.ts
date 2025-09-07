@@ -28,6 +28,14 @@ import * as path from "path";
 import { z } from "zod";
 import { createApiRouter } from "./api.ts";
 import { createVerifiableLogApiRouter } from "./verifiable-log-api.ts";
+import "./superTokens.ts"; // Ensure SuperTokens is initialized
+import { middleware, errorHandler } from "supertokens-node/framework/express";
+import { backendConfig } from "./config/backendConfig";
+import ThirdParty from "supertokens-node/recipe/thirdparty"; // Import the thirdparty recipe
+import supertokens from "supertokens-node";
+import Session from "supertokens-node/recipe/session";
+import { sanityClient } from "@elizaos-plugins/plugin-sanity";
+
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
@@ -120,11 +128,61 @@ export class DirectClient {
     constructor() {
         elizaLogger.log("DirectClient constructor");
         this.app = express();
-        this.app.use(cors());
         this.agents = new Map();
+
+
+    
+      // Configure CORS
+      const frontendOrigin = process.env.WEBSITE_DOMAIN || "http://localhost:5173";
+      this.app.use(
+          cors({
+              origin: frontendOrigin,
+              credentials: true,
+              allowedHeaders: ["Content-Type", ...supertokens.getAllCORSHeaders()],
+              methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+          })
+      );
+
+
+       
+
+          
+        // Debug middleware to log requests and responses
+        this.app.use((req, res, next) => {
+            elizaLogger.debug(`Incoming request: ${req.method} ${req.url}, Cookies:`, req.cookies);
+            const originalJson = res.json;
+            res.json = function (body) {
+                elizaLogger.debug(`Response for ${req.method} ${req.url}:`, JSON.stringify(body));
+                elizaLogger.debug(`CORS headers for ${req.method} ${req.url}:`, {
+                    "Access-Control-Allow-Origin": res.get("Access-Control-Allow-Origin"),
+                    "Access-Control-Allow-Credentials": res.get("Access-Control-Allow-Credentials"),
+                    "Access-Control-Allow-Headers": res.get("Access-Control-Allow-Headers"),
+                    "Set-Cookie": res.get("Set-Cookie"),
+                });
+                return originalJson.call(this, body);
+            };
+            next();
+        });
+          
+ // Webhook-specific middleware *first* to bypass JSON parsing
+this.app.use('/api/webhook', bodyParser.raw({ type: 'application/json' }), (req, res, next) => {
+    elizaLogger.debug('[INDEX] Webhook middleware', {
+        path: req.path,
+        originalUrl: req.originalUrl,
+        isBuffer: Buffer.isBuffer(req.body),
+        bodyType: typeof req.body,
+    });
+    next();
+});
+
 
         this.app.use(bodyParser.json());
         this.app.use(bodyParser.urlencoded({ extended: true }));
+
+
+ 
+           // Add SuperTokens middleware before other routes
+   this.app.use(middleware());
 
         // Serve both uploads and generated images
         this.app.use(
@@ -136,8 +194,9 @@ export class DirectClient {
             express.static(path.join(process.cwd(), "/generatedImages"))
         );
 
-        const apiRouter = createApiRouter(this.agents, this);
-        this.app.use(apiRouter);
+   // Mount API routers under /api
+   const apiRouter = createApiRouter(this.agents, this);
+   this.app.use("/api", apiRouter);
 
         const apiLogRouter = createVerifiableLogApiRouter(this.agents);
         this.app.use(apiLogRouter);
@@ -191,167 +250,178 @@ export class DirectClient {
         );
 
         this.app.post(
-            "/:agentId/message",
-            upload.single("file"),
-            async (req: express.Request, res: express.Response) => {
-                const agentId = req.params.agentId;
-                const roomId = stringToUuid(
-                    req.body.roomId ?? "default-room-" + agentId
-                );
-                const userId = stringToUuid(req.body.userId ?? "user");
-
-                let runtime = this.agents.get(agentId);
-
-                // if runtime is null, look for runtime with the same name
-                if (!runtime) {
-                    runtime = Array.from(this.agents.values()).find(
-                        (a) =>
-                            a.character.name.toLowerCase() ===
-                            agentId.toLowerCase()
-                    );
-                }
-
-                if (!runtime) {
-                    res.status(404).send("Agent not found");
-                    return;
-                }
-
-                await runtime.ensureConnection(
-                    userId,
-                    roomId,
-                    req.body.userName,
-                    req.body.name,
-                    "direct"
-                );
-
-                const text = req.body.text;
-                // if empty text, directly return
-                if (!text) {
-                    res.json([]);
-                    return;
-                }
-
-                const messageId = stringToUuid(Date.now().toString());
-
-                const attachments: Media[] = [];
-                if (req.file) {
-                    const filePath = path.join(
-                        process.cwd(),
-                        "data",
-                        "uploads",
-                        req.file.filename
-                    );
-                    attachments.push({
-                        id: Date.now().toString(),
-                        url: filePath,
-                        title: req.file.originalname,
-                        source: "direct",
-                        description: `Uploaded file: ${req.file.originalname}`,
-                        text: "",
-                        contentType: req.file.mimetype,
-                    });
-                }
-
-                const content: Content = {
-                    text,
-                    attachments,
-                    source: "direct",
-                    inReplyTo: undefined,
-                };
-
-                const userMessage = {
-                    content,
-                    userId,
-                    roomId,
-                    agentId: runtime.agentId,
-                };
-
-                const memory: Memory = {
-                    id: stringToUuid(messageId + "-" + userId),
-                    ...userMessage,
-                    agentId: runtime.agentId,
-                    userId,
-                    roomId,
-                    content,
-                    createdAt: Date.now(),
-                };
-
-                await runtime.messageManager.addEmbeddingToMemory(memory);
-                await runtime.messageManager.createMemory(memory);
-
-                let state = await runtime.composeState(userMessage, {
-                    agentName: runtime.character.name,
-                });
-
-                const context = composeContext({
-                    state,
-                    template: messageHandlerTemplate,
-                });
-
-                const response = await generateMessageResponse({
-                    runtime: runtime,
-                    context,
-                    modelClass: ModelClass.LARGE,
-                });
-
-                if (!response) {
-                    res.status(500).send(
-                        "No response from generateMessageResponse"
-                    );
-                    return;
-                }
-
-                // save response to memory
-                const responseMessage: Memory = {
-                    id: stringToUuid(messageId + "-" + runtime.agentId),
-                    ...userMessage,
-                    userId: runtime.agentId,
-                    content: response,
-                    embedding: getEmbeddingZeroVector(),
-                    createdAt: Date.now(),
-                };
-
-                await runtime.messageManager.createMemory(responseMessage);
-
-                state = await runtime.updateRecentMessageState(state);
-
-                let message = null as Content | null;
-
-                await runtime.processActions(
-                    memory,
-                    [responseMessage],
-                    state,
-                    async (newMessages) => {
-                        message = newMessages;
-                        return [memory];
-                    }
-                );
-
-                await runtime.evaluate(memory, state);
-
-                // Check if we should suppress the initial message
-                const action = runtime.actions.find(
-                    (a) => a.name === response.action
-                );
-                const shouldSuppressInitialMessage =
-                    action?.suppressInitialMessage;
-
-                if (!shouldSuppressInitialMessage) {
-                    if (message) {
-                        res.json([response, message]);
-                    } else {
-                        res.json([response]);
-                    }
-                } else {
-                    if (message) {
-                        res.json([message]);
-                    } else {
-                        res.json([]);
-                    }
-                }
+      "/api/:agentId/message",
+      cors({
+        origin: process.env.WEBSITE_DOMAIN || "http://localhost:5173",
+        credentials: true,
+        allowedHeaders: ["Content-Type", ...supertokens.getAllCORSHeaders()],
+        methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      }),
+      upload.single("file"),
+      async (req: express.Request, res: express.Response) => {
+        try {
+          // Optional session check for authenticated users
+          let userId: string = stringToUuid("anonymous-" + Date.now().toString());
+          try {
+            const session = await Session.getSession(req, res, { sessionRequired: false });
+            if (session) {
+              userId = session.getUserId();
+              elizaLogger.debug(`Authenticated user: ${userId}`);
+            } else {
+              elizaLogger.debug("No session, proceeding as anonymous user");
             }
-        );
+          } catch (sessionError) {
+            elizaLogger.warn("Session check failed, proceeding as anonymous:", sessionError);
+          }
 
+          const agentId = req.params.agentId;
+          elizaLogger.debug(`Processing message for agentId: ${agentId}, userId: ${userId}`);
+
+          let runtime = this.agents.get(agentId);
+          if (!runtime) {
+            runtime = Array.from(this.agents.values()).find(
+              (a) => a.character.name.toLowerCase() === agentId.toLowerCase()
+            );
+          }
+
+          if (!runtime) {
+            elizaLogger.error(`Agent not found for agentId: ${agentId}`);
+            return res.status(404).json({ error: "Agent not found" });
+          }
+
+          const roomId = stringToUuid(req.body.roomId ?? "default-room-" + agentId);
+          const userIdParam = stringToUuid(req.body.userId ?? userId);
+
+          await runtime.ensureConnection(
+            userIdParam,
+            roomId,
+            req.body.userName || "Anonymous",
+            req.body.name || "Anonymous",
+            "direct"
+          );
+
+          const text = req.body.text;
+          if (!text) {
+            elizaLogger.debug(`No text provided for agentId: ${agentId}`);
+            return res.json([]);
+          }
+
+          const messageId = stringToUuid(Date.now().toString());
+
+          const attachments: Media[] = [];
+          if (req.file) {
+            const filePath = path.join(process.cwd(), "data", "uploads", req.file.filename);
+            attachments.push({
+              id: Date.now().toString(),
+              url: filePath,
+              title: req.file.originalname,
+              source: "direct",
+              description: `Uploaded file: ${req.file.originalname}`,
+              text: "",
+              contentType: req.file.mimetype,
+            });
+          }
+
+          const content: Content = {
+            text,
+            attachments,
+            source: "direct",
+            inReplyTo: undefined,
+          };
+
+          const userMessage = {
+            content,
+            userId: userIdParam,
+            roomId,
+            agentId: runtime.agentId,
+          };
+
+          const memory: Memory = {
+            id: stringToUuid(messageId + "-" + userIdParam),
+            ...userMessage,
+            agentId: runtime.agentId,
+            userId: userIdParam,
+            roomId,
+            content,
+            createdAt: Date.now(),
+          };
+
+          await runtime.messageManager.addEmbeddingToMemory(memory);
+          await runtime.messageManager.createMemory(memory);
+
+          let state = await runtime.composeState(userMessage, {
+            agentName: runtime.character.name,
+          });
+
+          const context = composeContext({
+            state,
+            template: messageHandlerTemplate,
+          });
+
+          const response = await generateMessageResponse({
+            runtime: runtime,
+            context,
+            modelClass: ModelClass.LARGE,
+          });
+
+          if (!response) {
+            elizaLogger.error(`No response from generateMessageResponse for agentId: ${agentId}`);
+            return res.status(500).json({ error: "No response from generateMessageResponse" });
+          }
+
+          const responseMessage: Memory = {
+            id: stringToUuid(messageId + "-" + runtime.agentId),
+            ...userMessage,
+            userId: runtime.agentId,
+            content: response,
+            embedding: getEmbeddingZeroVector(),
+            createdAt: Date.now(),
+          };
+
+          await runtime.messageManager.createMemory(responseMessage);
+
+          state = await runtime.updateRecentMessageState(state);
+
+          let message = null as Content | null;
+
+          await runtime.processActions(
+            memory,
+            [responseMessage],
+            state,
+            async (newMessages) => {
+              message = newMessages;
+              return [memory];
+            }
+          );
+
+          await runtime.evaluate(memory, state);
+
+          const action = runtime.actions.find((a) => a.name === response.action);
+          const shouldSuppressInitialMessage = action?.suppressInitialMessage;
+
+          if (!shouldSuppressInitialMessage) {
+            if (message) {
+              res.json({ message: "Message processed" });
+              elizaLogger.debug("CORS headers sent:", {
+                "Access-Control-Allow-Origin": res.get("Access-Control-Allow-Origin"),
+                "Access-Control-Allow-Credentials": res.get("Access-Control-Allow-Credentials"),
+              });
+            } else {
+              res.json([response]);
+            }
+          } else {
+            if (message) {
+              res.json([message]);
+            } else {
+              res.json([]);
+            }
+          }
+        } catch (error) {
+          elizaLogger.error("Error in /message endpoint:", error);
+          res.status(500).json({ error: "Internal server error", details: error.message });
+        }
+      }
+    );
         this.app.post(
             "/agents/:agentIdOrName/hyperfi/v1",
             async (req: express.Request, res: express.Response) => {
@@ -980,7 +1050,23 @@ export class DirectClient {
                 });
             }
         });
-    }
+   // Add SuperTokens error handler
+   this.app.use(errorHandler());
+
+   // Handle unmatched routes
+   this.app.use((req, res) => {
+       res.status(404).json({ error: `Cannot ${req.method} ${req.url}` });
+   });
+
+   // Custom error handler
+   this.app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+       elizaLogger.error("Error:", err);
+       res.status(500).json({
+           error: "Internal server error",
+           details: err.message,
+       });
+   });
+}
 
     // agent/src/index.ts:startAgent calls this
     public registerAgent(runtime: IAgentRuntime) {

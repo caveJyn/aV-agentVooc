@@ -32,36 +32,56 @@
         --sidebar-accent-foreground: 240 5.9% 10%;
         --sidebar-border: 220 13% 91%;
         --sidebar-ring: 217.2 91.2% 59.8%;
+        /* AgentVooc Custom Colors */
+        --agentvooc-primary-bg: 180 20% 10%; /* #1A2526 - Dark teal/gray */
+        --agentvooc-primary-bg-dark: 180 20% 8%; /* Slightly darker for gradients */
+        --agentvooc-primary: 0 0% 100%; /* #FFFFFF - White for text */
+        --agentvooc-secondary: 180 10% 70%; /* #B0B8B4 - Light gray for secondary text */
+        --agentvooc-secondary-accent: 180 15% 20%; /* #2A3738 - Slightly lighter dark for accents */
+        --agentvooc-accent: 160 100% 85%; /* #00FFB3 - Neon green for buttons and highlights */
+        --agentvooc-stars: 160 100% 15%; /* Dimmer green for stars */
+        --agentvooc-button-bg: 180 15% 25%; /* #2F3D40 - Dark button background */
+        --agentvooc-glow: 160 100% 85% / 0.5; /* Neon green glow with opacity */
     }
 
     .dark {
-        --background: 0 0% 9%;
-        --foreground: 0 0% 98%;
-        --card: 0 0% 11.5%;
-        --card-foreground: 0 0% 98%;
-        --popover: 0 0% 12%;
-        --popover-foreground: 0 0% 98%;
-        --primary: 0 0% 98%;
-        --primary-foreground: 240 5.9% 10%;
-        --secondary: 240 3.7% 15.9%;
-        --secondary-foreground: 0 0% 98%;
-        --muted: 240 3.7% 15.9%;
-        --muted-foreground: 240 5% 64.9%;
-        --accent: 240 3.7% 15.9%;
-        --accent-foreground: 0 0% 98%;
+        --background: 180 20% 10%; /* #1A2526 */
+        --foreground: 0 0% 100%; /* #FFFFFF */
+        --card: 180 20% 10%; /* #1A2526 */
+        --card-foreground: 0 0% 100%; /* #FFFFFF */
+        --popover: 180 20% 12%; /* Slightly lighter than background */
+        --popover-foreground: 0 0% 100%; /* #FFFFFF */
+        --primary: 160 100% 85%; /* #00FFB3 - Neon green */
+        --primary-foreground: 180 20% 10%; /* #1A2526 */
+        --secondary: 180 15% 20%; /* #2A3738 */
+        --secondary-foreground: 0 0% 100%; /* #FFFFFF */
+        --muted: 180 15% 20%; /* #2A3738 */
+        --muted-foreground: 180 10% 70%; /* #B0B8B4 */
+        --accent: 180 15% 25%; /* #2F3D40 */
+        --accent-foreground: 0 0% 100%; /* #FFFFFF */
         --destructive: 0 62.8% 30.6%;
-        --destructive-foreground: 0 0% 98%;
-        --border: 240 3.7% 15.9%;
-        --input: 240 3.7% 15.9%;
-        --ring: 240 4.9% 83.9%;
-        --sidebar-background: 240 5.9% 10%;
-        --sidebar-foreground: 240 4.8% 95.9%;
-        --sidebar-primary: 224.3 76.3% 48%;
-        --sidebar-primary-foreground: 0 0% 100%;
-        --sidebar-accent: 240 3.7% 15.9%;
-        --sidebar-accent-foreground: 240 4.8% 95.9%;
-        --sidebar-border: 240 3.7% 15.9%;
-        --sidebar-ring: 217.2 91.2% 59.8%;
+        --destructive-foreground: 0 0% 100%; /* #FFFFFF */
+        --border: 180 15% 20%; /* #2A3738 */
+        --input: 180 15% 20%; /* #2A3738 */
+        --ring: 160 100% 85%; /* #00FFB3 */
+        --sidebar-background: 180 20% 10%; /* #1A2526 */
+        --sidebar-foreground: 0 0% 100%; /* #FFFFFF */
+        --sidebar-primary: 160 100% 85%; /* #00FFB3 */
+        --sidebar-primary-foreground: 180 20% 10%; /* #1A2526 */
+        --sidebar-accent: 180 15% 20%; /* #2A3738 */
+        --sidebar-accent-foreground: 0 0% 100%; /* #FFFFFF */
+        --sidebar-border: 180 15% 20%; /* #2A3738 */
+        --sidebar-ring: 160 100% 85%; /* #00FFB3 */
+        /* AgentVooc Custom Colors (Dark Mode) */
+        --agentvooc-primary-bg: 180 20% 10%; /* #1A2526 */
+        --agentvooc-primary-bg-dark: 180 20% 8%; /* Slightly darker for gradients */
+        --agentvooc-primary: 0 0% 100%; /* #FFFFFF */
+        --agentvooc-secondary: 180 10% 70%; /* #B0B8B4 */
+        --agentvooc-secondary-accent: 180 20% 10%; /* #1A2526 */
+        --agentvooc-accent: 160 100% 85%; /* #00FFB3 */
+        --agentvooc-stars: 160 100% 15%; /* Dimmer green for stars */
+        --agentvooc-button-bg: 180 15% 25%; /* #2F3D40 */
+        --agentvooc-glow: 160 100% 85% / 0.1; /* Neon green glow */
     }
 }
 
@@ -71,6 +91,115 @@
     }
 
     body {
-        @apply bg-background text-foreground;
+        @apply bg-background text-foreground font-sans;
+    }
+
+    p, li {
+        line-height: 1.6;
+    }
+
+    /* Custom Glow Effect for AgentVooc */
+    .shadow-agentvooc-glow {
+        box-shadow: 0 0 5px hsl(var(--agentvooc-glow));
+    }
+}
+
+@layer utilities {
+    /* Custom bullet styling */
+    ul.custom-bullets li::marker {
+        color: hsl(var(--agentvooc-accent));
+    }
+
+    /* Footer link underline effect */
+    .footer-link {
+        position: relative;
+    }
+    .footer-link::after {
+        content: '';
+        position: absolute;
+        width: 0;
+        height: 1px;
+        bottom: 0;
+        left: 0;
+        background-color: hsl(var(--agentvooc-accent));
+        transition: width 0.3s;
+    }
+    .footer-link:hover::after {
+        width: 100%;
+    }
+
+    /* Section fade-in animation */
+    section {
+        opacity: 1; /* Default to visible */
+        transform: translateY(0);
+    }
+    /* Apply fade-in only if JavaScript adds the 'animate' class */
+    section.animate {
+        opacity: 0;
+        transform: translateY(20px);
+        transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+    }
+    section.animate.visible {
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+    /* Combined animation: Initial fade followed by pulsing */
+    @keyframes star-sequence {
+        /* Initial fade: 0% to 25% (1s out of 4s total duration) */
+        0% {
+            opacity: 0.8; /* Start at full brightness */
+            transform: scale(1);
+        }
+        25% {
+            opacity: 0.45; /* Fade to star-pulse starting opacity */
+            transform: scale(1);
+        }
+        /* Pulsing phase: 25% to 100% (remaining 3s, matching star-pulse) */
+        50% {
+            opacity: 0.45; /* Peak of the pulse */
+            transform: scale(1.2);
+        }
+        75% {
+            opacity: 0.15; /* Back to base opacity */
+            transform: scale(1);
+        }
+        100% {
+            opacity: 0.55; /* Ensure it ends at base opacity */
+            transform: scale(1);
+        }
+    }
+    .animate-star-sequence {
+        animation: star-sequence 4s infinite ease-in-out;
+    }
+
+    /* Glow pulse animation for buttons */
+    @keyframes glow-pulse {
+        0% { box-shadow: 0 0 5px hsl(var(--agentvooc-glow)); }
+        50% { box-shadow: 0 0 15px hsl(var(--agentvooc-glow)); }
+        100% { box-shadow: 0 0 5px hsl(var(--agentvooc-glow)); }
+    }
+    .animate-glow-pulse {
+        animation: glow-pulse 2s infinite ease-in-out;
+    }
+
+    /* Fade-in animation for text */
+    @keyframes fade-in {
+        0% { opacity: 0; transform: translateY(20px); }
+        100% { opacity: 1; transform: translateY(0); }
+    }
+    .animate-fade-in {
+        animation: fade-in 1s ease-out forwards;
+    }
+
+    /* Mobile responsiveness */
+    @media (max-width: 640px) {
+        h1 {
+            font-size: 2.5rem;
+        }
+        button {
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+        }
     }
 }

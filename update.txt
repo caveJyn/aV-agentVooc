@@ -1,0 +1,3 @@
+enabled editing your character, deleting, updating on the user dashboard, editing knowledge.
+
+implemented plugins activation to characters on a basic level. limited functionality

@@ -15,8 +15,5 @@
         {
             "path": "packages/core"
         },
-        {
-            "path": "packages/client-slack"
-        }
     ]
 }

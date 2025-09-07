@@ -1423,35 +1423,76 @@ export async function generateShouldRespond({
  * @param bleed - Number of characters to overlap between chunks (default: 100)
  * @returns Promise resolving to array of text chunks with bleed sections
  */
-export async function splitChunks(
-    content: string,
-    chunkSize = 1500,
-    bleed = 100
-): Promise<string[]> {
-    elizaLogger.debug(`[splitChunks] Starting text split`);
+export function splitText(content: string, chunkSize: number, bleed: number): string[] {
+    elizaLogger.info('[splitText] Inputs:', {
+        contentLength: content.length,
+        chunkSize,
+        bleed,
+        contentSnippet: content.substring(0, 50)
+    });
 
-    const chunks = splitText(content, chunkSize, bleed);
+    const chunks: string[] = [];
+    let start = 0;
+    let iteration = 0;
+    const maxIterations = Math.ceil(content.length / (chunkSize - bleed));
 
-    elizaLogger.debug(`[splitChunks] Split complete:`, {
-        numberOfChunks: chunks.length,
-        averageChunkSize:
-            chunks.reduce((acc, chunk) => acc + chunk.length, 0) /
-            chunks.length,
+    try {
+        while (start < content.length) {
+            if (iteration >= maxIterations) {
+                elizaLogger.warn('[splitText] Max iterations reached:', {
+                    start,
+                    contentLength: content.length,
+                    chunkSize,
+                    bleed,
+                    iteration
+                });
+                break;
+            }
+            const end = Math.min(start + chunkSize, content.length);
+            const chunk = content.substring(start, end);
+            elizaLogger.debug('[splitText] Pushing chunk:', {
+                iteration,
+                start,
+                end,
+                chunkLength: chunk.length
+            });
+            chunks.push(chunk);
+            start = end - bleed;
+            iteration++;
+        }
+    } catch (error) {
+        elizaLogger.error('[splitText] Error during chunking:', {
+            error: error.message,
+            stack: error.stack,
+            start,
+            iteration,
+            chunksLength: chunks.length
+        });
+        throw error;
+    }
+
+    // Calculate totalSize without double-counting bleed overlaps
+    let totalSize = 0;
+    if (chunks.length > 0) {
+        // First chunk is full length, subsequent chunks add non-overlapping length
+        totalSize = chunks[0].length + (chunks.length - 1) * (chunkSize - bleed);
+        // Cap at content length to avoid overestimation
+        totalSize = Math.min(totalSize, content.length);
+    }
+
+    elizaLogger.info('[splitText] Output:', {
+        chunkCount: chunks.length,
+        totalSize,
+        chunks: chunks.map(chunk => chunk.substring(0, 20) + '...')
     });
 
     return chunks;
 }
 
-export function splitText(content: string, chunkSize: number, bleed: number): string[] {
-    const chunks: string[] = [];
-    let start = 0;
-
-    while (start < content.length) {
-        const end = Math.min(start + chunkSize, content.length);
-        chunks.push(content.substring(start, end));
-        start = end - bleed; // Apply overlap
-    }
-
+export async function splitChunks(content: string, chunkSize = 1500, bleed = 100): Promise<string[]> {
+    elizaLogger.info('[splitChunks] Starting:', { contentLength: content.length, chunkSize, bleed });
+    const chunks = splitText(content, chunkSize, bleed);
+    elizaLogger.info('[splitChunks] Complete:', { chunkCount: chunks.length });
     return chunks;
 }
 

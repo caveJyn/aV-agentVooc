@@ -65,7 +65,7 @@ export default function ChatTtsButton({
         }
     };
 
-    const iconClass = "text-muted-foreground size-4";
+    const iconClass = "text-[hsl(var(--agentvooc-accent))] size-4";
 
     return (
         <div>
@@ -92,6 +92,7 @@ export default function ChatTtsButton({
                         type="button"
                         onClick={() => execute()}
                         disabled={mutation?.isPending}
+                        className="text-[hsl(var(--agentvooc-accent))] hover:text-[hsl(var(--agentvooc-primary))]"
                     >
                         {mutation?.isPending ? (
                             <Ellipsis className={iconClass} />
@@ -102,7 +103,7 @@ export default function ChatTtsButton({
                         )}
                     </Button>
                 </TooltipTrigger>
-                <TooltipContent side="bottom">
+                <TooltipContent side="bottom" className="bg-[hsl(var(--agentvooc-secondary-accent))] text-[hsl(var(--agentvooc-primary))] border-[hsl(var(--agentvooc-accent))/30]">
                     <p>{playing ? "Stop" : "Read aloud"}</p>
                 </TooltipContent>
             </Tooltip>

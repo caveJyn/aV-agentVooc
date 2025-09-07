@@ -2,12 +2,12 @@ import { Character, ModelProviderName } from "@elizaos/core";
 
 // Custom plugins
 import telegram from "@elizaos-plugins/client-telegram";
-import solana from "@elizaos-plugins/plugin-solana";
+import email from "@elizaos-plugins/plugin-email";
 
 export const defaultCharacter: Character = {
   name: "Eliza",
   username: "eliza",
-  plugins: [telegram, solana],
+  plugins: [telegram, email],
   modelProvider: ModelProviderName.OPENAI,
   settings: {
     secrets: {},

@@ -1,46 +1,34 @@
-# Eliza 🤖
+# agentVooc 🤖
 
 <div align="center">
-  <img src="./docs/static/img/eliza_banner.jpg" alt="Eliza Banner" width="100%" />
+  <img src="./docs/static/img/ad1.jpg" alt="agentVooc Banner" width="100%" />
 </div>
 
 <div align="center">
 
-📑 [Technical Report](https://arxiv.org/pdf/2501.06781) |  📖 [Documentation](https://elizaos.github.io/eliza/) | 🎯 [Examples](https://github.com/thejoven/awesome-eliza)
+📑 📖 [Documentation](https://agentvooc.com/company/docs) | 🎯 [Examples](https://github.com/thejoven/awesome-eliza)
 
 </div>
 
-## 🌍 README Translations
-
-[中文说明](i18n/readme/README_CN.md) | [日本語の説明](i18n/readme/README_JA.md) | [한국어 설명](i18n/readme/README_KOR.md) | [Persian](i18n/readme/README_FA.md) | [Français](i18n/readme/README_FR.md) | [Português](i18n/readme/README_PTBR.md) | [Türkçe](i18n/readme/README_TR.md) | [Русский](i18n/readme/README_RU.md) | [Español](i18n/readme/README_ES.md) | [Italiano](i18n/readme/README_IT.md) | [ไทย](i18n/readme/README_TH.md) | [Deutsch](i18n/readme/README_DE.md) | [Tiếng Việt](i18n/readme/README_VI.md) | [עִברִית](i18n/readme/README_HE.md) | [Tagalog](i18n/readme/README_TG.md) | [Polski](i18n/readme/README_PL.md) | [Arabic](i18n/readme/README_AR.md) | [Hungarian](i18n/readme/README_HU.md) | [Srpski](i18n/readme/README_RS.md) | [Română](i18n/readme/README_RO.md) | [Nederlands](i18n/readme/README_NL.md) | [Ελληνικά](i18n/readme/README_GR.md)
 
 ## 🚩 Overview
 
 <div align="center">
-  <img src="./docs/static/img/eliza_diagram.png" alt="Eliza Diagram" width="100%" />
+  agentVooc is an operating system for AI agents, forked from elizaOS. It powers applications running on agentvooc.com. This is a monorepo that integrates Sanity CMS for managing characters, plugins, and features; Stripe for payments; and SuperTokens for user management.
 </div>
 
 ## ✨ Features
 
-- 🛠️ Full-featured Discord, X (Twitter) and Telegram connectors
-- 🔗 Support for every model (Llama, Grok, OpenAI, Anthropic, Gemini, etc.)
-- 👥 Multi-agent and room support
-- 📚 Easily ingest and interact with your documents
+- 🛠️ Sanity Studio integration for headless character creation
+- 🔗 Support for every model (penAI, Gemini, etc.)
+- 📚 Document ingestion and interaction.
 - 💾 Retrievable memory and document store
-- 🚀 Highly extensible - create your own actions and clients
-- 📦 Just works!
+- 🚀 Extensible with custom plugins and clients.
+- 📦 Integrated with Sanity CMS, Stripe, and SuperTokens.
 
 ## Video Tutorials
 
 [AI Agent Dev School](https://www.youtube.com/watch?v=ArptLpQiKfI&list=PLx5pnFXdPTRzWla0RaOxALTSTnVq53fKL)
-
-## 🎯 Use Cases
-
-- 🤖 Chatbots
-- 🕵️ Autonomous Agents
-- 📈 Business Process Handling
-- 🎮 Video Game NPCs
-- 🧠 Trading
 
 ## 🚀 Quick Start
 
@@ -80,40 +68,45 @@ cp .env.example .env
 ```
 
 For a basic start you'll want to fill out the following fields:
-- **TELEGRAM_BOT_TOKEN**
+
+Setup an LLM
 - **OPENAI_API_KEY**
-- **SOLANA_PRIVATE_KEY**
-- **SOLANA_PUBLIC_KEY**
-- **SOLANA_RPC_URL**
 
-Optional fields:
+Sanity CMS (Character and Knowledge Management)
+- **SANITY_PROJECT_ID=your-project-id**
+- **SANITY_DATASET=production (or your dataset name)**
+- **SANITY_API_TOKEN=your-api-token**
+- **SANITY_API_VERSION=2023-05-03**
+- **SANITY_WEBHOOK_SECRET=your-webhook-secret**
 
-- **BIRDEYE_API_KEY**
+Email (Optional, for Email Plugin)
+- **EMAIL_OUTGOING_SERVICE=gmail (or smtp)**
+- **EMAIL_OUTGOING_USER=your-email@domain.com**
+- **EMAIL_OUTGOING_PASS=your-app-password (use Gmail App Password if 2FA is enabled)**
+- **EMAIL_INCOMING_SERVICE=imap**
+- **EMAIL_INCOMING_HOST=imap.gmail.com**
+- **EMAIL_INCOMING_PORT=993**
+- **EMAIL_INCOMING_USER=your-email@domain.com**
+- **EMAIL_INCOMING_PASS=your-app-password**
 
-#### 5. Start Eliza
+SuperTokens (User Management)
+- **SUPERTOKENS_CONNECTION_URI=your-supertokens-uri**
+- **SUPERTOKENS_API_KEY=your-api-key (for managed service)**
+- **PASSWORDLESS_CODE_LIFETIME=600000**
+- **PASSWORDLESS_MAX_CODE_INPUT_ATTEMPTS=3**
+
+Stripe (Payments)
+- **VITE_STRIPE_PUBLISHABLE_KEY=your-publishable-key**
+- **STRIPE_SECRET_KEY=your-secret-key**
+- **STRIPE_WEBHOOK_SECRET=your-webhook-secret**
+
+
+
+#### 5. Start agentVooc
 ```bash
 pnpm start
 ```
 
-### Manually Start Eliza (Only recommended for plugin or platform development)
-
-#### Checkout the latest release
-
-```bash
-# Clone the repository
-git clone https://github.com/elizaos/eliza.git
-
-# This project iterates fast, so we recommend checking out the latest release
-git checkout $(git describe --tags --abbrev=0)
-# If the above doesn't checkout the latest release, this should work:
-# git checkout $(git describe --tags `git rev-list --tags --max-count=1`)
-```
-
-If you would like the sample character files too, then run this:
-```bash
-# Download characters submodule from the character repos
-git submodule update --init
-```
 
 #### Edit the .env file
 
@@ -125,7 +118,7 @@ cp .env.example .env
 
 Note: .env is optional. If you're planning to run multiple distinct agents, you can pass secrets through the character JSON
 
-#### Start Eliza
+#### Start agentVooc
 
 ```bash
 pnpm i
@@ -146,13 +139,13 @@ Open another terminal, move to the same directory, run the command below, then f
 pnpm start:client
 ```
 
-Then read the [Documentation](https://elizaos.github.io/eliza/) to learn how to customize your Eliza.
+Then read the [Documentation](https://elizaos.github.io/eliza/) to learn how to customize your agentVooc.
 
 ---
 
-### Automatically Start Eliza
+### Automatically Start agentVooc
 
-The start script provides an automated way to set up and run Eliza:
+The start script provides an automated way to set up and run agentVooc:
 
 ```bash
 sh scripts/start.sh
@@ -176,11 +169,6 @@ For detailed instructions on using the start script, including character managem
 
 ---
 
-### Add more plugins
-
-1. run `npx elizaos plugins list` to get a list of available plugins or visit https://elizaos.github.io/registry/
-
-2. run `npx elizaos plugins add @elizaos-plugins/plugin-NAME` to install the plugin into your instance
 
 #### Additional Requirements
 
@@ -190,30 +178,6 @@ You may need to install Sharp. If you see an error when starting up, try install
 pnpm install --include=optional sharp
 ```
 
----
-
-### Start Eliza with Gitpod
-
-[![Open in Gitpod](https://gitpod.io/button/open-in-gitpod.svg)](https://gitpod.io/#https://github.com/elizaos/eliza/tree/main)
-
----
-
-### Deploy Eliza in one click
-
-Use [Fleek](https://fleek.xyz/eliza/) to deploy Eliza in one click. This opens Eliza to non-developers and provides the following options to build your agent:
-1. Start with a template
-2. Build characterfile from scratch
-3. Upload pre-made characterfile
-
-Click [here](https://fleek.xyz/eliza/) to get started!
-
----
-
-### Community & contact
-
-- [GitHub Issues](https://github.com/elizaos/eliza/issues). Best for: bugs you encounter using Eliza, and feature proposals.
-- [elizaOS Discord](https://discord.gg/elizaos). Best for: hanging out with the elizaOS technical community
-- [DAO Discord](https://discord.gg/ai16z). Best for: hanging out with the larger non-technical community
 
 ## Citation
 
@@ -226,17 +190,6 @@ We now have a [paper](https://arxiv.org/pdf/2501.06781) you can cite for the Eli
   year={2025}
 }
 ```
-
-## Contributors
-
-<a href="https://github.com/elizaos/eliza/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=elizaos/eliza" alt="Eliza project contributors" />
-</a>
-
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=elizaos/eliza&type=Date)](https://star-history.com/#elizaos/eliza&Date)
 
 ## 🛠️ System Requirements
 
@@ -259,7 +212,7 @@ We now have a [paper](https://arxiv.org/pdf/2501.06781) you can cite for the Eli
 
 ## 📁 Project Structure
 ```
-eliza/
+agentVooc/
 ├── packages/
 │   ├── core/           # Core Eliza functionality
 │   ├── clients/        # Client implementations

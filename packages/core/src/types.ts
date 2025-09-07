@@ -805,8 +805,12 @@ export type Character = {
     adjectives: string[];
 
     /** Optional knowledge base */
-    knowledge?: (string | { path: string; shared?: boolean })[];
-
+    knowledge?: (
+        | string
+        | { path: string; shared?: boolean }
+        | DirectoryItem
+        | SanityReference
+      )[];
     /** Available plugins */
     plugins: Plugin[];
 
@@ -950,6 +954,17 @@ export type Character = {
     extends?: string[];
 
     twitterSpaces?: TwitterSpaceDecisionOptions;
+
+
+    /** Optional reference to the user who created the character */
+    createdBy?: {
+        _ref: string;
+    } | {
+        _id: string;
+        name?: string;
+        email?: string;
+        // Add other User fields as needed
+    };
 };
 
 export interface TwitterSpaceDecisionOptions {
@@ -1232,6 +1247,10 @@ export interface IRAGKnowledgeManager {
     }): Promise<void>;
     cleanupDeletedKnowledgeFiles(): Promise<void>;
     generateScopedId(path: string, isShared: boolean): UUID;
+    addStringKnowledge(content: string, isShared?: boolean): Promise<void>;
+    addSanityKnowledge(items: RAGKnowledgeItem[]): Promise<void>;
+    addFileKnowledge(relativePath: string, isShared: boolean): Promise<void>; // Added this line
+
 }
 
 export type CacheOptions = {
@@ -1607,3 +1626,9 @@ export interface ChunkRow {
     id: string;
     // Add other properties if needed
 }
+
+export type SanityReference = {
+    _type: "reference";
+    _ref: string;
+    _key?: string;
+  };

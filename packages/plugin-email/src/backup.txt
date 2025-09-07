@@ -1,0 +1,194 @@
+import type { Action, ActionExample, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
+import { elizaLogger } from "@elizaos/core";
+import { EmailClientInterface, EmailClient } from "./clients/emailClient";
+import type { Plugin } from "@elizaos/core";
+import type { SendEmailOptions, EmailResponse } from "./types";
+
+const sendEmailAction: Action = {
+  name: "SEND_EMAIL",
+  similes: ["SEND_EMAIL", "EMAIL", "SEND_MESSAGE", "COMPOSE_EMAIL"],
+  description: "Sends an email to a specified recipient with a subject and body.",
+  suppressInitialMessage: true, // Ensure [message] response branch
+
+  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+    elizaLogger.debug("[EMAIL-PLUGIN] Validating SEND_EMAIL action", {
+      character: runtime.character,
+      messageText: message.content.text,
+    });
+
+    const text = message.content.text?.toLowerCase() || "";
+    const isEmailRequest = text.includes("send an email") || text.includes("email to");
+    const hasRecipient = text.match(/to\s*[:=]\s*['"]?[^'"}\s,]+['"]?(?:,|$)/i);
+
+    if (!isEmailRequest || !hasRecipient) {
+      return false;
+    }
+
+    const emailClient = runtime.clients.find(c => (c as any).type === "email");
+    if (!emailClient) {
+      elizaLogger.warn("[EMAIL-PLUGIN] Email client not available for SEND_EMAIL");
+      return false;
+    }
+
+    return true;
+  },
+
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+    _options?: any,
+    callback?: HandlerCallback
+  ): Promise<boolean> => {
+    elizaLogger.info("[EMAIL-PLUGIN] Executing SEND_EMAIL action", {
+      character: runtime.character,
+      messageText: message.content.text,
+    });
+
+    try {
+      const emailClient = runtime.clients.find(c => (c as any).type === "email") as EmailClient | undefined;
+      if (!emailClient) {
+        elizaLogger.error("[EMAIL-PLUGIN] Email client not initialized for SEND_EMAIL");
+        throw new Error("Email client not initialized");
+      }
+
+      // Normalize message text
+      const text = (message.content.text || "").replace(/\r/g, "").trim();
+      elizaLogger.debug("[EMAIL-PLUGIN] Raw message text", { rawText: message.content.text });
+      elizaLogger.debug("[EMAIL-PLUGIN] Normalized message text", { text });
+
+      // Lenient regexes for parsing
+      const toMatch = text.match(/to\s*[:=]\s*['"]?([^'"}\s,;]+)['"]?\s*(?:[,\n;]|\s*$)/im);
+      const subjectMatch = text.match(/subject\s*[:=]\s*['"]?([^'"}\s,;]+)['"]?\s*(?:[,\n;]|\s*$)/im);
+      const bodyMatch = text.match(/(?:text|body)\s*[:=]\s*['"]?(.+?)['"]?\s*(?:\n|\s*$)/im);
+
+      const to = toMatch ? toMatch[1].trim() : null;
+      const subject = subjectMatch ? subjectMatch[1].trim() : "No subject";
+      const body = bodyMatch ? bodyMatch[1].trim() : "No body";
+
+      elizaLogger.debug("[EMAIL-PLUGIN] Parsed email parameters", {
+        to,
+        subject,
+        body,
+        bodyLength: body.length,
+      });
+
+      if (!to) {
+        elizaLogger.warn("[EMAIL-PLUGIN] No recipient specified for SEND_EMAIL");
+        const response = {
+          thought: "The message didn’t specify a recipient for the email.",
+          text: "Please provide a recipient email address (e.g., 'to: example@domain.com').",
+          actions: ["REPLY"],
+          user: runtime.character.id,
+          createdAt: Date.now(),
+        };
+
+        if (callback) {
+          await callback(response);
+          elizaLogger.debug("[EMAIL-PLUGIN] Callback invoked with error response", { response });
+        }
+        return false;
+      }
+
+      const result: EmailResponse = await emailClient.send({
+        to,
+        subject,
+        text: body,
+      } as SendEmailOptions);
+
+      elizaLogger.info("[EMAIL-PLUGIN] Email sent successfully", {
+        character: runtime.character,
+        messageId: result.messageId,
+        to,
+        accepted: result.accepted,
+        rejected: result.rejected,
+      });
+
+      // Response matching Content type
+      const response = {
+        thought: `Successfully sent an email to ${to} with subject "${subject}" and body "${body}".`,
+        text: `Email sent to ${to}\nSubject: ${subject}\nBody: ${body}`,
+        actions: ["REPLY"],
+        source: "SEND_EMAIL",
+        metadata: { messageId: result.messageId },
+      };
+
+      if (callback) {
+        await callback(response);
+        elizaLogger.debug("[EMAIL-PLUGIN] Callback invoked with success response", { response });
+      }
+
+      return true;
+    } catch (error) {
+      elizaLogger.error("[EMAIL-PLUGIN] SEND_EMAIL action failed", {
+        character: runtime.character,
+        error: error.message,
+        stack: error.stack,
+        messageText: message.content.text,
+      });
+
+      const response = {
+        thought: `Failed to send email due to an error: ${error.message}`,
+        text: "Sorry, I couldn’t send the email. Please check the details and try again.",
+        actions: ["REPLY"],
+        source: "direct",
+        metadata: { error: error.message },
+      };
+
+      if (callback) {
+        await callback(response);
+        elizaLogger.debug("[EMAIL-PLUGIN] Callback invoked with error response", { response });
+      }
+
+      return false;
+    }
+  },
+
+  examples: [
+    [
+      {
+        user: "{{user1}}",
+        content: {
+          text: `send an email.\nto: 'test.recipient@example.com',\nsubject: 'Test Email',\ntext: 'Hello from ElizaOS!'`,
+        },
+      },
+      {
+        user: "{{agent}}",
+        content: {
+          text: `Email sent to test.recipient@example.com\nSubject: Test Email\nBody: Hello from ElizaOS!`,
+          thought: "Successfully sent an email to test.recipient@example.com with subject \"Test Email\" and body \"Hello from ElizaOS!\".",
+          actions: ["REPLY"],
+        },
+      },
+    ],
+    [
+      {
+        user: "{{user1}}",
+        content: {
+          text: "Email to friend@domain.com saying hi",
+        },
+      },
+      {
+        user: "{{agent}}",
+        content: {
+          text: `Email sent to friend@domain.com\nSubject: No subject\nBody: hi`,
+          thought: "Sent an email to friend@domain.com with default subject.",
+          actions: ["REPLY"],
+        },
+      },
+    ],
+  ] as ActionExample[][],
+};
+
+export const emailPlugin: Plugin = {
+  name: "email",
+  description: "Email plugin for Eliza",
+  clients: [EmailClientInterface],
+  actions: [sendEmailAction],
+  evaluators: [],
+  services: [],
+};
+
+export * from "./types";
+
+export default emailPlugin;

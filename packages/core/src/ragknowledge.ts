@@ -10,8 +10,8 @@ import {
 } from "./types.ts";
 import { stringToUuid } from "./uuid.ts";
 import { existsSync } from "fs";
-import { join } from "path";
-
+import { join, extname } from "path";
+import { readFile } from "fs/promises";
 /**
  * Manage knowledge in the database.
  */
@@ -188,6 +188,7 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
 
         // If id is provided, do direct lookup first
         if (params.id) {
+            elizaLogger.debug(`[RAG Query] Direct lookup by ID: ${params.id}, agentId: ${agentId}`);
             const directResults =
                 await this.runtime.databaseAdapter.getKnowledge({
                     id: params.id,
@@ -196,13 +197,22 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
 
             if (directResults.length > 0) {
                 return directResults;
+            }else{
+                elizaLogger.info(`[RAG Result] No items found for ID: ${params.id}`);
             }
         }
 
         // If no id or no direct results, perform semantic search
         if (params.query) {
             try {
+                elizaLogger.info(`[RAG Query] Performing semantic search`, {
+                    query: params.query,
+                    conversationContext: params.conversationContext?.slice(0, 200) || "none",
+                    limit: params.limit || this.defaultRAGMatchCount,
+                    agentId,
+                });
                 const processedQuery = this.preprocess(params.query);
+                elizaLogger.debug(`[RAG Query] Processed query: ${processedQuery}`);
 
                 // Build search text with optional context
                 let searchText = processedQuery;
@@ -211,10 +221,12 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
                         params.conversationContext
                     );
                     searchText = `${relevantContext} ${processedQuery}`;
+                    elizaLogger.debug(`[RAG Query] Search text with context: ${searchText.slice(0, 200)}`);
                 }
 
                 const embeddingArray = await embed(this.runtime, searchText);
-
+                elizaLogger.debug(`[RAG Query] Generated embedding for search text`);
+                
                 const embedding = new Float32Array(embeddingArray);
 
                 // Get results with single query
@@ -226,6 +238,15 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
                         match_count:
                             (params.limit || this.defaultRAGMatchCount) * 2,
                         searchText: processedQuery,
+                    });
+
+                    elizaLogger.info(`[RAG Result] Retrieved ${results.length} items for query: ${params.query}`, {
+                        items: results.map(item => ({
+                            id: item.id,
+                            text: item.content.text.slice(0, 100),
+                            similarity: item.similarity,
+                            metadata: item.content.metadata,
+                        })),
                     });
 
                 // Enhanced reranking with sophisticated scoring
@@ -254,6 +275,11 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
                             ) {
                                 score *= 1.5; // Stronger proximity boost
                             }
+                            elizaLogger.debug(`[RAG Rerank] Item ${result.id} score adjusted`, {
+                                originalSimilarity: result.similarity,
+                                newScore: score,
+                                matchingTerms,
+                            });
                         } else {
                             // More aggressive penalty
                             if (!params.conversationContext) {
@@ -442,6 +468,15 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
 
             for (const item of parentDocuments) {
                 const relativePath = item.content.metadata?.source;
+
+                 // Skip non-filesystem sources
+            if (relativePath === "string" || relativePath === "sanity" || relativePath === "sanity-reference") {
+                elizaLogger.debug(
+                    `[Cleanup] Skipping non-filesystem knowledge item: ${item.id} (source: ${relativePath})`
+                );
+                continue;
+            }
+
                 const filePath = join(this.knowledgeRoot, relativePath);
 
                 elizaLogger.debug(
@@ -504,7 +539,105 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
         const scopedPath = `${scope}-${path}`;
         return stringToUuid(scopedPath);
     }
-
+    async addStringKnowledge(content: string, isShared: boolean = false): Promise<void> {
+        const knowledgeId = stringToUuid(`${isShared ? "shared" : this.runtime.agentId}-${content.slice(0, 50)}`);
+        const existingKnowledge = await this.getKnowledge({ id: knowledgeId });
+    
+        if (existingKnowledge.length > 0 && existingKnowledge[0].content.text === content) {
+          elizaLogger.info(`String knowledge ${knowledgeId} unchanged, skipping`);
+          return;
+        }
+    
+        if (existingKnowledge.length > 0) {
+          await this.removeKnowledge(knowledgeId);
+        }
+    
+        await this.createKnowledge({
+          id: knowledgeId,
+          agentId: this.runtime.agentId,
+          content: {
+            text: content,
+            metadata: {
+              type: "direct",
+              isShared,
+              isMain: false,
+              isChunk: false,
+            },
+          },
+          createdAt: Date.now(),
+        });
+        elizaLogger.info(`Added string knowledge: ${content.slice(0, 50)}...`);
+      }
+      async addFileKnowledge(relativePath: string, isShared: boolean): Promise<void> {
+        try {
+          const ext = extname(relativePath).toLowerCase();
+          const fullPath = join(this.knowledgeRoot, relativePath);
+    
+          let content: string;
+          let type: "txt" | "md";
+    
+          if (ext === ".md" || ext === ".txt") {
+            content = await readFile(fullPath, "utf-8");
+            type = ext === ".md" ? "md" : "txt";
+          } else {
+            throw new Error(`Unsupported file type: ${ext}`);
+          }
+    
+          await this.processFile({
+            path: relativePath,
+            content,
+            type,
+            isShared,
+          });
+          elizaLogger.success(`Added file knowledge: ${relativePath}`);
+        } catch (error) {
+          elizaLogger.error(`Failed to add file knowledge: ${relativePath}`, error);
+          throw error;
+        }
+      }
+      async addSanityKnowledge(items: RAGKnowledgeItem[]): Promise<void> {
+        for (const item of items) {
+          const knowledgeId = item.id || stringToUuid(`${this.runtime.agentId}-sanity-${item.content.text.slice(0, 50)}`);
+          const existingKnowledge = await this.getKnowledge({ id: knowledgeId });
+    
+          if (existingKnowledge.length > 0 && existingKnowledge[0].content.text === item.content.text) {
+            elizaLogger.info(`Sanity knowledge: ${knowledgeId} unchanged, skipping`);
+            continue;
+          }
+    
+          if (existingKnowledge.length > 0) {
+            await this.removeKnowledge(knowledgeId);
+          }
+          let embedding = item.embedding;
+          if (!embedding) {
+            elizaLogger.warn(`No embedding for Sanity item ${knowledgeId}, generating locally`);
+            const embeddingArray = await embed(this.runtime, item.content.text);
+            embedding = new Float32Array(embeddingArray);
+          }
+          await this.createKnowledge({
+            id: knowledgeId,
+            agentId: this.runtime.agentId,
+            content: {
+              text: item.content.text,
+              metadata: {
+                type: item.content.metadata?.type || "text",
+                isShared: item.content.metadata?.isShared || false,
+                source: "sanity-reference", // Indicate this is not a filesystem path
+                isMain: item.content.metadata?.isMain || false,
+                isChunk: item.content.metadata?.isChunk || false,
+                originalId: item.content.metadata?.originalId,
+                chunkIndex: item.content.metadata?.chunkIndex,
+                category: item.content.metadata?.category || "",
+                customFields: item.content.metadata?.customFields || [],
+              },
+            },
+            embedding,
+            createdAt: item.createdAt || Date.now(),
+          });
+          elizaLogger.info(`Added Sanity knowledge: ${item.content.text.slice(0, 50)}...`);
+        }
+      }
+      
     async processFile(file: {
         path: string;
         content: string;
@@ -531,6 +664,34 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
                 file.isShared || false
             );
 
+
+        // Added an early check for existing knowledge using getKnowledge to skip if the content is unchanged.
+        // Check if knowledge already exists
+        const existingKnowledge = await this.getKnowledge({ id: scopedId });
+        if (
+            existingKnowledge.length > 0 &&
+            existingKnowledge[0].content.text === content
+        ) {
+            elizaLogger.info(
+                `Knowledge ${file.path} unchanged, skipping`
+            );
+            return;
+        }
+
+        // Remove existing knowledge if content has changed including chunks
+        if (existingKnowledge.length > 0) {
+            await this.removeKnowledge(scopedId);
+            const allKnowledge = await this.listAllKnowledge(this.runtime.agentId);
+            const chunks = allKnowledge.filter(item => 
+                item.id.startsWith(`${scopedId}-chunk-`)
+            );
+            for (const chunk of chunks) {
+                await this.removeKnowledge(chunk.id);
+            }
+            elizaLogger.info(`[processFile] Removed ${chunks.length} existing chunks for ${scopedId}`);
+        }
+
+        
             // Step 1: Preprocessing
             //const preprocessStart = Date.now();
             const processedContent = this.preprocess(content);
@@ -622,13 +783,13 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
             elizaLogger.info(
                 `[Complete] Processed ${file.path} in ${totalTime.toFixed(2)}s`
             );
+
+            
+            //Modified the catch block to handle SQLITE_CONSTRAINT_PRIMARYKEY for all knowledge (not just isShared), logging a skip message instead of throwing.
         } catch (error) {
-            if (
-                file.isShared &&
-                error?.code === "SQLITE_CONSTRAINT_PRIMARYKEY"
-            ) {
+            if (error?.code === "SQLITE_CONSTRAINT_PRIMARYKEY") {
                 elizaLogger.info(
-                    `Shared knowledge ${file.path} already exists in database, skipping creation`
+                    `Knowledge ${file.path} already exists in database, skipping creation`
                 );
                 return;
             }
