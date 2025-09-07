@@ -73,6 +73,12 @@ Sanity CMS (Character and Knowledge Management)
 - **SANITY_API_VERSION=2023-05-03**
 - **SANITY_WEBHOOK_SECRET=your-webhook-secret**
 
+Google credential for BigQuery
+- **GOOGLE_APPLICATION_CREDENTIALS= (location of the credentials file)**
+- Set up a GCS bucket for storing the incoming data.
+- Create a service account in IAM & Admin in GCS, use the key created for `GOOGLE_APPLICATION_CREDENTIALS`
+- Make sure to a connection via Vertex AI is available for remote models.
+
 Email (Optional, for Email Plugin)
 - **EMAIL_OUTGOING_SERVICE=gmail (or smtp)**
 - **EMAIL_OUTGOING_USER=your-email@domain.com**
@@ -94,13 +100,10 @@ Stripe (Payments)
 - **STRIPE_SECRET_KEY=your-secret-key**
 - **STRIPE_WEBHOOK_SECRET=your-webhook-secret**
 
-
-
 #### 5. Start agentVooc
 ```bash
 pnpm start
 ```
-
 
 #### Edit the .env file
 
@@ -132,18 +135,9 @@ Open another terminal, move to the same directory, run the command below, then f
 ```bash
 pnpm start:client
 ```
-
-Then read the [Documentation](https://elizaos.github.io/eliza/) to learn how to customize your agentVooc.
+Then, open the vite server and navigate to `/home` where you will see the dashboard and the default character loaded from `agent/src/defaultCharacter.ts` with email plugin enabled for it. Set the env variables correctly and the agent will be equipped with inbox access.
 
 ---
-
-### Automatically Start agentVooc
-
-The start script provides an automated way to set up and run agentVooc:
-
-```bash
-sh scripts/start.sh
-```
 
 For detailed instructions on using the start script, including character management and troubleshooting, see ElizaOs's [Start Script Guide](./docs/docs/guides/start-script.md).
 
