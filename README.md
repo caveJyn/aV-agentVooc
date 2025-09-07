@@ -1,7 +1,7 @@
 # agentVooc 🤖
 
 <div align="center">
-  <img src="./docs/static/img/ad1.jpg" alt="agentVooc Banner" width="100%" />
+  <img src="./docs/static/img/ad1.png" alt="agentVooc Banner" width="100%" />
 </div>
 
 <div align="center">
