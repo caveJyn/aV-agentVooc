@@ -6,7 +6,7 @@
 
 <div align="center">
 
-📑 📖 [Documentation](https://agentvooc.com/company/docs) | 🎯 [Examples](https://github.com/thejoven/awesome-eliza)
+📖 [Documentation](https://agentvooc.com/company/docs) | 🎯 [Examples](https://github.com/thejoven/awesome-eliza)
 
 </div>
 
