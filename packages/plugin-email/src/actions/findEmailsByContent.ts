@@ -1,7 +1,7 @@
 import type { Action, ActionExample, HandlerCallback, IAgentRuntime, Memory, State, Content, UUID } from "@elizaos/core";
 import { elizaLogger, stringToUuid, validateUuid } from "@elizaos/core";
 import { BigQuery } from "@google-cloud/bigquery";
-import { getEmailBody } from "../utils/gcsUtils";
+import { getEmailBody } from "../utils/bigQuery";
 
 const bigquery = new BigQuery();
 const datasetId = process.env.BIGQUERY_DATASET_ID || 'agentvooc_dataset';
@@ -59,7 +59,7 @@ async function findSimilarEmailsByContent(queryText: string, userId: string, top
       emailRows = await job.getQueryResults();
       emailRows = emailRows[0];
     } else {
-      elizaLogger.info(`[BIGQUERY] Vector index not found, using text-based search for query ${sanitizedQueryText}`);
+      elizaLogger.debug(`[BIGQUERY] Vector index not found, using text-based search for query ${sanitizedQueryText}`);
       query = `
         SELECT
           em.id AS email_id,
@@ -89,7 +89,7 @@ async function findSimilarEmailsByContent(queryText: string, userId: string, top
       }))
     );
 
-    elizaLogger.info(`[BIGQUERY] Found similar emails by content`, { queryText, sanitizedQueryText, count: emailsWithBodies.length });
+    elizaLogger.debug(`[BIGQUERY] Found similar emails by content`, { queryText, sanitizedQueryText, count: emailsWithBodies.length });
     return emailsWithBodies;
   } catch (error: any) {
     elizaLogger.error(`[BIGQUERY] Failed to find similar emails by content`, { error: error.message, queryText, stack: error.stack });
@@ -128,7 +128,7 @@ export const findSimilarEmailsAction: Action = {
         isListingIds
       )
     );
-    elizaLogger.info("[EMAIL-PLUGIN] Validating FIND_SIMILAR_EMAILS action", { text, isValid });
+    elizaLogger.debug("[EMAIL-PLUGIN] Validating FIND_SIMILAR_EMAILS action", { text, isValid });
     return isValid;
   },
 
@@ -139,7 +139,7 @@ export const findSimilarEmailsAction: Action = {
     options?: { ragKnowledge?: string },
     callback?: HandlerCallback
   ): Promise<boolean> => {
-    elizaLogger.info("[EMAIL-PLUGIN] Executing FIND_SIMILAR_EMAILS action", {
+    elizaLogger.debug("[EMAIL-PLUGIN] Executing FIND_SIMILAR_EMAILS action", {
       messageText: message.content.text,
       roomId: runtime.character.id,
     });
@@ -216,7 +216,7 @@ export const findSimilarEmailsAction: Action = {
             LIMIT 5
           `;
         } else {
-          elizaLogger.info(`[BIGQUERY] Vector index not found, using text-based search for emailId ${emailId}`);
+          elizaLogger.debug(`[BIGQUERY] Vector index not found, using text-based search for emailId ${emailId}`);
           query = `
             SELECT
               em.id AS email_id,

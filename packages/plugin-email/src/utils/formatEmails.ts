@@ -1,6 +1,6 @@
 import { Storage } from "@google-cloud/storage";
 import { elizaLogger } from "@elizaos/core";
-import { getEmailBody } from "./gcsUtils";
+import { getEmailBody } from "./bigQuery";
 
 const bucketName = 'agentvooc_email_storage';
 const storage = new Storage();

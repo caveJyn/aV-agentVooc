@@ -17,12 +17,18 @@ import {
     settings,
     stringToUuid,
     validateCharacterConfig,
+    type Plugin,
+    Service,
+    ServiceType,
+    UUID,
+    type Secret,
+    type DirectoryItem
 } from "@elizaos/core";
-import { defaultCharacter } from "./defaultCharacter.ts";
 
 import { bootstrapPlugin } from "@elizaos/plugin-bootstrap";
 import { loadEnabledSanityCharacters } from "@elizaos-plugins/plugin-sanity";
 import { loadSanityKnowledge } from "@elizaos-plugins/plugin-sanity";
+
 
 import fs from "fs";
 import net from "net";
@@ -30,9 +36,15 @@ import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 import yargs from "yargs";
+import chokidar from 'chokidar';
+import pkg from 'lodash';
+const { debounce } = pkg;
+import { readFile } from 'fs/promises';
+import  { decryptValue }  from "@elizaos/client-direct"
 
 const __filename = fileURLToPath(import.meta.url); // get the resolved path to the file
 const __dirname = path.dirname(__filename); // get the name of the directory
+
 
 export const wait = (minTime = 1000, maxTime = 3000) => {
     const waitTime =
@@ -114,7 +126,7 @@ function mergeCharacters(base: Character, child: Character): Character {
 export async function loadCharacterFromOnchain(): Promise<Character[]> {
     const jsonText = onchainJson;
 
-    console.log("JSON:", jsonText);
+    elizaLogger.debug("JSON:", jsonText);
     if (!jsonText) return [];
     const loadedCharacters = [];
     try {
@@ -145,7 +157,7 @@ export async function loadCharacterFromOnchain(): Promise<Character[]> {
 
         // Handle plugins
         if (isAllStrings(character.plugins)) {
-            elizaLogger.info("Plugins are: ", character.plugins);
+            elizaLogger.debug("Plugins are: ", character.plugins);
             const importedPlugins = await Promise.all(
                 character.plugins.map(async (plugin) => {
                     const importedPlugin = await import(plugin);
@@ -156,7 +168,7 @@ export async function loadCharacterFromOnchain(): Promise<Character[]> {
         }
 
         loadedCharacters.push(character);
-        elizaLogger.info(
+        elizaLogger.debug(
             `Successfully loaded character from: ${process.env.IQ_WALLET_ADDRESS}`
         );
         return loadedCharacters;
@@ -216,7 +228,7 @@ async function jsonToCharacter(
     // Handle plugins
     character.plugins = await handlePluginImporting(character.plugins);
     if (character.extends) {
-        elizaLogger.info(
+        elizaLogger.debug(
             `Merging  ${character.name} character with parent characters`
         );
         for (const extendPath of character.extends) {
@@ -224,7 +236,7 @@ async function jsonToCharacter(
                 path.resolve(path.dirname(filePath), extendPath)
             );
             character = mergeCharacters(baseCharacter, character);
-            elizaLogger.info(
+            elizaLogger.debug(
                 `Merged ${character.name} with ${baseCharacter.name}`
             );
         }
@@ -260,7 +272,7 @@ async function loadCharacterTryPath(characterPath: string): Promise<Character> {
         ), // relative to project root characters dir
     ];
 
-    elizaLogger.info(
+    elizaLogger.debug(
         "Trying paths:",
         pathsToTry.map((p) => ({
             path: p,
@@ -288,7 +300,7 @@ async function loadCharacterTryPath(characterPath: string): Promise<Character> {
     }
     try {
         const character: Character = await loadCharacter(resolvedPath);
-        elizaLogger.info(`Successfully loaded character from: ${resolvedPath}`);
+        elizaLogger.debug(`Successfully loaded character from: ${resolvedPath}`);
         return character;
     } catch (e) {
         elizaLogger.error(`Error parsing character from ${resolvedPath}: ${e}`);
@@ -322,13 +334,13 @@ export async function loadCharacters(
 ): Promise<Character[]> { // Adjusted type to match usage
     const loadedCharacters: Character[] = [];
   
-    // console.log("loadCharacters starting with charactersArg:", charactersArg);
-    // console.log("REMOTE_CHARACTER_URLS:", process.env.REMOTE_CHARACTER_URLS);
-    // console.log("USE_CHARACTER_STORAGE:", process.env.USE_CHARACTER_STORAGE);
+    // elizaLogger.debug("loadCharacters starting with charactersArg:", charactersArg);
+    // elizaLogger.debug("REMOTE_CHARACTER_URLS:", process.env.REMOTE_CHARACTER_URLS);
+    // elizaLogger.debug("USE_CHARACTER_STORAGE:", process.env.USE_CHARACTER_STORAGE);
   
     // Handle CLI arguments (character paths)
     if (charactersArg) {
-      elizaLogger.info("Loading characters from CLI arguments");
+      elizaLogger.debug("Loading characters from CLI arguments");
       let characterPaths = commaSeparatedStringToArray(charactersArg);
   
       // Include characters from storage if enabled
@@ -342,7 +354,7 @@ export async function loadCharacters(
           try {
             const character: Character = await loadCharacterTryPath(characterPath);
             loadedCharacters.push(character);
-            elizaLogger.info(`Loaded character from path: ${character.name}`);
+            elizaLogger.debug(`Loaded character from path: ${character.name}`);
           } catch (e) {
             elizaLogger.error(`Failed to load character from ${characterPath}: ${e}`);
           }
@@ -352,13 +364,13 @@ export async function loadCharacters(
   
     // Load from remote URLs if provided and no CLI args
     if (!charactersArg && hasValidRemoteUrls()) {
-      elizaLogger.info("Loading characters from remote URLs");
+      elizaLogger.debug("Loading characters from remote URLs");
       const characterUrls = commaSeparatedStringToArray(process.env.REMOTE_CHARACTER_URLS);
       for (const characterUrl of characterUrls) {
         try {
           const characters = await loadCharactersFromUrl(characterUrl);
           loadedCharacters.push(...characters);
-          elizaLogger.info(`Loaded ${characters.length} characters from ${characterUrl}`);
+          elizaLogger.debug(`Loaded ${characters.length} characters from ${characterUrl}`);
         } catch (e) {
           elizaLogger.error(`Failed to load characters from ${characterUrl}: ${e}`);
         }
@@ -371,7 +383,7 @@ export async function loadCharacters(
       try {
         const sanityCharacters = await loadEnabledSanityCharacters();
         loadedCharacters.push(...sanityCharacters);
-        elizaLogger.info(`Loaded ${sanityCharacters.length} characters from Sanity`);
+        elizaLogger.debug(`Loaded ${sanityCharacters.length} characters from Sanity`);
       } catch (e) {
         elizaLogger.error(`Failed to load characters from Sanity: ${e}`);
       }
@@ -379,33 +391,104 @@ export async function loadCharacters(
   
     // Fallback to default character if none loaded
     if (loadedCharacters.length === 0) {
-      elizaLogger.info("No characters found, using default character");
-      loadedCharacters.push(defaultCharacter);
+      elizaLogger.debug("No characters found, using default character");
+      loadedCharacters.push();
     }
   
-    elizaLogger.info("Total characters loaded:", loadedCharacters.map(c => c.name));
+    elizaLogger.debug("Total characters loaded:", loadedCharacters.map(c => c.name));
     return loadedCharacters;
   }
-  async function handlePluginImporting(plugins: string[]): Promise<Plugin[]> {
+
+
+
+
+
+
+// Define a type for constructable service classes
+interface ServiceConstructor {
+  new (): Service;
+  getInstance?: () => Service;
+    serviceType?: string; // Optional, to match TwitterService
+}
+
+async function initializeServices(character: Character, runtime: IAgentRuntime) {
+  if (character.plugins?.length > 0) {
+    for (const plugin of character.plugins) {
+      elizaLogger.debug(`Processing plugin: ${plugin.name}, services: ${plugin.services?.length}`);
+      if (plugin.services && plugin.services.length > 0) {
+        for (const serviceClass of plugin.services as unknown as ServiceConstructor[]) {
+          elizaLogger.debug(`[DEBUG] Service class: ${serviceClass.name}, has getInstance: ${typeof serviceClass.getInstance === 'function'}`);
+          const hasGetInstance = typeof serviceClass.getInstance === 'function';
+          let serviceInstance: Service;
+          if (hasGetInstance) {
+            serviceInstance = serviceClass.getInstance();
+          } else {
+            serviceInstance = new serviceClass();
+          }
+          elizaLogger.debug(`[DEBUG] Service instance:`, serviceInstance, `instanceof Service: ${serviceInstance instanceof Service}, has initialize: ${typeof serviceInstance.initialize === 'function'}`);
+          if (!(serviceInstance instanceof Service) || typeof serviceInstance.initialize !== 'function') {
+            elizaLogger.error(`[AGENT] Service ${serviceClass.name} does not properly extend Service or lacks initialize method`);
+            continue;
+          }
+          await serviceInstance.initialize(runtime);
+          runtime.registerService(serviceInstance);
+        }
+      }
+    }
+  }
+}
+
+
+
+  async function handlePluginImporting(plugins: (string | Plugin)[]): Promise<Plugin[]> {
     if (plugins.length > 0) {
-      elizaLogger.info("Plugins are: ", plugins);
+      elizaLogger.debug("Plugins to process:", plugins);
       const importedPlugins = await Promise.all(
         plugins.map(async (plugin) => {
           try {
-            const importedPlugin = await import(plugin);
-            const functionName = plugin
-              .replace("@elizaos/plugin-", "")
-              .replace("@elizaos-plugins/plugin-", "")
-              .replace("@elizaos-plugins/client-", "")
-              .replace(/-./g, (x) => x[1].toUpperCase()) + "Plugin";
-            const pluginInstance = importedPlugin.default || importedPlugin[functionName];
-            if (!pluginInstance) {
-              elizaLogger.error(`No valid plugin export found for ${plugin}`);
-              return null;
+            // If plugin is already a Plugin object, return it
+            if (typeof plugin === "object" && plugin?.name) {
+              elizaLogger.debug(`Using pre-mapped plugin: ${plugin.name}`);
+              return plugin as Plugin;
             }
-            return pluginInstance as Plugin;
+  
+            // If plugin is a string, map to module path or import
+            if (typeof plugin === "string") {
+              let modulePath = plugin;
+              // Map known plugin names to module paths
+              const pluginModuleMap: { [key: string]: string } = {
+                twitter: "@elizaos-plugins/plugin-twitter",
+                telegram: "@elizaos-plugins/client-telegram",
+                email: "@elizaos-plugins/plugin-email",
+
+                // Add other plugins as needed
+              };
+              if (pluginModuleMap[plugin]) {
+                modulePath = pluginModuleMap[plugin];
+                elizaLogger.debug(`Mapped plugin name ${plugin} to module path ${modulePath}`);
+              }
+              const importedPlugin = await import(modulePath);
+              const functionName = modulePath
+                .replace("@elizaos/plugin-", "")
+                .replace("@elizaos-plugins/plugin-", "")
+                .replace("@elizaos-plugins/client-", "")
+                .replace(/-./g, (x) => x[1].toUpperCase()) + "Plugin";
+              const pluginInstance = importedPlugin.default || importedPlugin[functionName];
+              if (!pluginInstance) {
+                elizaLogger.error(`No valid plugin export found for ${modulePath}`);
+                return null;
+              }
+              return pluginInstance as Plugin;
+            }
+  
+            // Invalid plugin format
+            elizaLogger.warn(`Invalid plugin format:`, plugin);
+            return null;
           } catch (importError) {
-            elizaLogger.error(`Failed to import plugin: ${plugin}`, importError);
+            elizaLogger.error(`[AGENT] Failed to import plugin ${plugin}:`, {
+              message: importError.message,
+              stack: importError.stack,
+            });
             return null;
           }
         })
@@ -613,18 +696,23 @@ export async function initializeClients(
             for (const client of plugin.clients) {
               try {
                 const startedClient = await client.start(runtime);
-                elizaLogger.debug(`Initializing client: ${client.name} for plugin: ${plugin.name}`);
+                elizaLogger.info(`Initializing client: ${client.name} for plugin: ${plugin.name}`);
                 clients.push(startedClient);
               } catch (error) {
-                elizaLogger.error(`Failed to initialize client ${client.name} for plugin ${plugin.name}`, error);
+                elizaLogger.error(`Failed to initialize client ${client.name} for plugin ${plugin.name}:`, {
+                    message: error.message,
+                    stack: error.stack,
+                    characterId: character.id,
+                    characterName: character.name,
+                });
               }
             }
           } else {
-            elizaLogger.debug(`No clients to initialize for plugin: ${plugin.name}`);
+            elizaLogger.info(`[AGENT] No clients to initialize for plugin: ${plugin.name}`);
           }
         }
       } else {
-        elizaLogger.debug(`No plugins defined for character: ${character.name}`);
+        elizaLogger.info(`[AGENT] No plugins defined for character: ${character.name}`);
       }
       return clients;
     }
@@ -683,7 +771,7 @@ function initializeCache(
     switch (cacheStore) {
         // case CacheStore.REDIS:
         //     if (process.env.REDIS_URL) {
-        //         elizaLogger.info("Connecting to Redis...");
+        //         elizaLogger.debug("Connecting to Redis...");
         //         const redisClient = new RedisClient(process.env.REDIS_URL);
         //         if (!character?.id) {
         //             throw new Error(
@@ -699,7 +787,7 @@ function initializeCache(
 
         case CacheStore.DATABASE:
             if (db) {
-                elizaLogger.info("Using Database Cache...");
+                elizaLogger.debug("Using Database Cache...");
                 return initializeDbCache(character, db);
             } else {
                 throw new Error(
@@ -708,7 +796,7 @@ function initializeCache(
             }
 
         case CacheStore.FILESYSTEM:
-            elizaLogger.info("Using File System Cache...");
+            elizaLogger.debug("Using File System Cache...");
             if (!baseDir) {
                 throw new Error(
                     "baseDir must be provided for CacheStore.FILESYSTEM."
@@ -743,63 +831,193 @@ async function findDatabaseAdapter(runtime: AgentRuntime) {
   return adapterInterface;
 }
 
-async function startAgent(
-    character: Character,
-    directClient: DirectClient
-): Promise<AgentRuntime> {
-    let db: IDatabaseAdapter & IDatabaseCacheAdapter;
-    try {
-        elizaLogger.debug(`Starting agent for character ${character.name}:`, { id: character.id, createdBy: character.createdBy });
-        character.id ??= stringToUuid(character.name);
-        character.username ??= character.name;
-
-        const token = getTokenForProvider(character.modelProvider, character);
-
-        const runtime: AgentRuntime = await createAgent(
-            character,
-            token
-        );
-
-        // initialize database
-        // find a db from the plugins
-        db = await findDatabaseAdapter(runtime);
-        runtime.databaseAdapter = db;
-
-        // initialize cache
-        const cache = initializeCache(
-            process.env.CACHE_STORE ?? CacheStore.DATABASE,
-            character,
-            process.env.CACHE_DIR ?? "",
-            db
-        ); // "" should be replaced with dir for file system caching. THOUGHTS: might probably make this into an env
-        runtime.cacheManager = cache;
-
-        // start services/plugins/process knowledge
-        await runtime.initialize();
-
-        // start assigned clients
-        runtime.clients = await initializeClients(character, runtime);
-
-        // add to container
-        directClient.registerAgent(runtime);
-
-        // report to console
-        elizaLogger.debug(`Started ${character.name} as ${runtime.agentId}`);
-        elizaLogger.info("startAgent returned runtime:", runtime.agentId);
 
 
-        return runtime;
-    } catch (error) {
-        elizaLogger.error(
-            `Error starting agent for character ${character.name}:`,
-            error
-        );
-        elizaLogger.error(error);
-        if (db) {
-            await db.close();
+async function updateAgentKnowledge(runtime: AgentRuntime, event: string, filePath: string) {
+    const knowledgeRoot = path.join(process.cwd(), 'agent',  'characters', 'knowledge');
+    // Normalize paths to avoid platform-specific issues
+    const normalizedKnowledgeRoot = path.normalize(knowledgeRoot).replace(/\\/g, '/');
+    const normalizedFilePath = path.normalize(filePath).replace(/\\/g, '/');
+    const relPath = path.relative(normalizedKnowledgeRoot, normalizedFilePath).replace(/\\/g, '/');
+    const fileDir = path.dirname(relPath).replace(/\\/g, '/').replace(/\/+$/, ''); // Remove trailing slashes
+    const knowledgeItems = (runtime.character.knowledge || []).filter(
+        (item): item is DirectoryItem => 
+            typeof item === 'object' && 
+            item !== null && 
+            'type' in item && 
+            item.type === 'directory' && 
+            'directory' in item && 
+            typeof item.directory === 'string'
+    );
+    elizaLogger.debug(`Processing file: ${normalizedFilePath}, relPath: ${relPath}, fileDir: ${fileDir}`, {
+        knowledgeRoot: normalizedKnowledgeRoot,
+        knowledgeItemsCount: knowledgeItems.length,
+        knowledgeItems: knowledgeItems.map(item => ({ directory: item.directory, shared: item.shared }))
+    });
+    let matched = false;
+    for (const item of knowledgeItems) {
+        const dirRel = item.directory.replace(/\\/g, '/').replace(/\/+$/, ''); // Normalize and remove trailing slashes
+        elizaLogger.debug(`Checking directory: ${dirRel}, shared: ${item.shared}, matches: ${fileDir === dirRel || fileDir.startsWith(`${dirRel}/`)}`);
+        if (fileDir === dirRel || fileDir.startsWith(`${dirRel}/`)) {
+            matched = true;
+            const isShared = item.shared || false;
+            if (event === 'add' || event === 'change') {
+                try {
+                    elizaLogger.debug(`Attempting to read ${normalizedFilePath} for ${runtime.character.name}`);
+                    const content = await readFile(normalizedFilePath, 'utf8');
+                    elizaLogger.debug(`Read ${normalizedFilePath}, content length: ${content.length}, content: ${content.slice(0, 50)}`);
+                    const fileExtension = path.extname(normalizedFilePath).toLowerCase().slice(1);
+                    if (['md', 'txt', 'pdf'].includes(fileExtension)) {
+                        elizaLogger.debug(`Processing ${relPath} for ${runtime.character.name}`);
+                        await runtime.ragKnowledgeManager.processFile({
+                            path: relPath,
+                            content,
+                            type: fileExtension as 'md' | 'txt' | 'pdf',
+                            isShared,
+                        });
+                        elizaLogger.debug(`Updated knowledge for ${runtime.character.name} from ${relPath}`);
+                    } else {
+                        elizaLogger.warn(`Unsupported file extension: ${fileExtension} for ${relPath}`);
+                    }
+                } catch (error) {
+                    elizaLogger.error(`Failed to process ${relPath} for ${runtime.character.name}:`, {
+                        message: error.message,
+                        stack: error.stack
+                    });
+                    throw error; // Ensure errors are not silently ignored
+                }
+            }
+            break;
         }
-        throw error;
     }
+    if (!matched) {
+        elizaLogger.warn(`No matching knowledge directory found for ${relPath}`, {
+            fileDir,
+            availableDirectories: knowledgeItems.map(item => item.directory)
+        });
+    }
+}
+
+
+
+async function startAgent(character: Character, directClient: DirectClient): Promise<AgentRuntime> {
+  let db: IDatabaseAdapter & IDatabaseCacheAdapter;
+  try {
+    elizaLogger.debug(`Starting agent for character ${character.name}`, { id: character.id, createdBy: character.createdBy });
+
+    // Ensure character has valid ID and username
+    character.id ??= stringToUuid(character.name);
+    character.username ??= character.name;
+
+    // Initialize settings if undefined, omitting email to keep it undefined
+    character.settings = character.settings || { secrets: {}, secretsDynamic: [] };
+
+    // Decrypt dynamic secrets from Sanity CMS
+    const decryptedDynamicSecrets = (character.settings.secretsDynamic || []).map((secret: Secret) => {
+      try {
+        const value = secret.encryptedValue?.iv
+          ? decryptValue(secret.encryptedValue.iv, secret.encryptedValue.ciphertext)
+          : secret.encryptedValue?.ciphertext || '';
+        return { ...secret, value };
+      } catch (error) {
+        elizaLogger.warn(`Failed to decrypt secret ${secret.key}`, { error: error.message });
+        return { ...secret, value: '' };
+      }
+    });
+
+    // Merge decrypted secrets into settings
+    const secrets = decryptedDynamicSecrets.reduce(
+      (acc: { [key: string]: string }, secret: Secret) => {
+        if (secret.value) acc[secret.key] = secret.value;
+        return acc;
+      },
+      { ...character.settings.secrets }
+    );
+
+    // Fallback to environment variables for critical secrets
+    const requiredSecrets = [
+      'EMAIL_INCOMING_USER',
+      'EMAIL_INCOMING_PASS',
+      'EMAIL_OUTGOING_USER',
+      'EMAIL_OUTGOING_PASS',
+      'EMAIL_INCOMING_SERVICE',
+      'EMAIL_INCOMING_HOST',
+      'EMAIL_INCOMING_PORT',
+    ];
+    requiredSecrets.forEach(key => {
+      if (!secrets[key] && process.env[key]) secrets[key] = process.env[key]!;
+    });
+
+    // Construct email settings for plugins
+    const emailSettings: Character['settings']['email'] = {
+      outgoing: {
+        service: secrets.EMAIL_OUTGOING_SERVICE && ['gmail', 'smtp'].includes(secrets.EMAIL_OUTGOING_SERVICE)
+          ? secrets.EMAIL_OUTGOING_SERVICE as 'gmail' | 'smtp'
+          : 'gmail',
+        host: secrets.EMAIL_OUTGOING_HOST || '',
+        port: secrets.EMAIL_OUTGOING_PORT ? parseInt(secrets.EMAIL_OUTGOING_PORT, 10) : 587,
+        secure: secrets.EMAIL_SECURE ? secrets.EMAIL_SECURE === 'true' : true,
+        user: secrets.EMAIL_OUTGOING_USER || '',
+        pass: secrets.EMAIL_OUTGOING_PASS || '',
+      },
+      incoming: {
+        service: 'imap' as const, // Use 'as const' to ensure literal type "imap"
+        host: secrets.EMAIL_INCOMING_HOST || '',
+        port: secrets.EMAIL_INCOMING_PORT ? parseInt(secrets.EMAIL_INCOMING_PORT, 10) : 993,
+        user: secrets.EMAIL_INCOMING_USER || '',
+        pass: secrets.EMAIL_INCOMING_PASS || '',
+      },
+    };
+
+    // Create decrypted character for plugin initialization
+    const decryptedCharacter: Character = {
+      ...character,
+      settings: {
+        ...character.settings,
+        secrets,
+        secretsDynamic: decryptedDynamicSecrets,
+        email: emailSettings,
+      },
+    };
+
+    // Initialize agent runtime with token
+    const token = getTokenForProvider(decryptedCharacter.modelProvider, decryptedCharacter);
+    const runtime: AgentRuntime = await createAgent(decryptedCharacter, token);
+
+    // Override runtime.getSetting to access decrypted secrets
+    const originalGetSetting = runtime.getSetting.bind(runtime);
+    runtime.getSetting = (key: string) => decryptedCharacter.settings?.secrets?.[key] || originalGetSetting(key);
+
+    // Initialize database adapter
+    db = await findDatabaseAdapter(runtime);
+    runtime.databaseAdapter = db;
+
+    // Initialize cache
+    const cache = initializeCache(
+      process.env.CACHE_STORE ?? CacheStore.DATABASE,
+      decryptedCharacter,
+      process.env.CACHE_DIR ?? '',
+      db
+    );
+    runtime.cacheManager = cache;
+
+    // Initialize services and plugins (managed via Sanity CMS)
+    await initializeServices(decryptedCharacter, runtime);
+    await runtime.initialize();
+
+    // Initialize clients (integrated with Supertokens for user management)
+    runtime.clients = await initializeClients(decryptedCharacter, runtime);
+
+    // Register agent with direct client (Stripe payments handled externally)
+    directClient.registerAgent(runtime);
+
+    elizaLogger.debug(`Started ${decryptedCharacter.name} as ${runtime.agentId}`);
+    return runtime;
+  } catch (error) {
+    elizaLogger.error(`Error starting agent for character ${character.name}`, { error: error.message });
+    if (db) await db.close();
+    throw error;
+  }
 }
 
 const checkPortAvailable = (port: number): Promise<boolean> => {
@@ -832,14 +1050,11 @@ const hasValidRemoteUrls = () =>
           const directClient = new DirectClient();
           let serverPort = Number.parseInt(settings.SERVER_PORT || "3000");
           const args = parseArguments();
-          elizaLogger.info("Parsed arguments:", args);
+          elizaLogger.debug("Parsed arguments:", args);
           const charactersArg = args.characters || args.character;
       
           // Log environment variables for debugging
-          elizaLogger.info("Environment variables:", {
-            SERVER_PORT: settings.SERVER_PORT,
-            CACHE_STORE: process.env.CACHE_STORE,
-            CACHE_DIR: process.env.CACHE_DIR,
+          elizaLogger.debug("Environment variables:", {
             REMOTE_CHARACTER_URLS: process.env.REMOTE_CHARACTER_URLS,
             USE_CHARACTER_STORAGE: process.env.USE_CHARACTER_STORAGE,
             SANITY_PROJECT_ID: process.env.SANITY_PROJECT_ID,
@@ -861,7 +1076,7 @@ const hasValidRemoteUrls = () =>
           }
       
           // Log detailed contents of characters array
-          elizaLogger.info("Loaded characters array:", {
+          elizaLogger.debug("Loaded characters array:", {
             count: characters.length,
             characters: characters.map((char) => ({
               id: char.id || stringToUuid(char.name),
@@ -878,7 +1093,7 @@ const hasValidRemoteUrls = () =>
             elizaLogger.warn("No characters to start");
           } else {
             for (const character of characters) {
-              elizaLogger.info(`Starting agent for character: ${character.name}`);
+              elizaLogger.debug(`Starting agent for character: ${character.name}`);
               try {
                 const runtime = await startAgent(character, directClient); // Capture the runtime
                 runtimes.push(runtime); // Add it to the array
@@ -920,7 +1135,7 @@ const hasValidRemoteUrls = () =>
           // Start the server
           try {
             directClient.start(serverPort);
-            elizaLogger.info(`DirectClient server started on port ${serverPort}`);
+            elizaLogger.debug(`DirectClient server started on port ${serverPort}`);
           } catch (error) {
             elizaLogger.error("Failed to start DirectClient server:", {
               error: error.message,
@@ -934,7 +1149,7 @@ const hasValidRemoteUrls = () =>
             elizaLogger.log(`Server started on alternate port ${serverPort}`);
           }
       
-          elizaLogger.info(
+          elizaLogger.debug(
             "Run `pnpm start:client` to start the client and visit the outputted URL (http://localhost:5173) to chat with your agents. When running multiple agents, use client with different port `SERVER_PORT=3001 pnpm start:client`"
           );
       
@@ -943,23 +1158,46 @@ const hasValidRemoteUrls = () =>
             try {
               if (runtime.character.settings?.ragKnowledge) {
                 // String knowledge
-                await runtime.addKnowledge("ElizaOS supports dynamic knowledge addition.", false);
+                // await runtime.addKnowledge("agentVooc does supports dynamic knowledge addition.", false);
       
-                // File knowledge
-                const filePath = "degennn/specific-info.txt";
-                const fullPath = path.resolve(__dirname, "..", "characters", "knowledge", filePath);
-                if (fs.existsSync(fullPath)) {
-                  await runtime.addKnowledge({ path: filePath }, false);
-                } else {
-                  elizaLogger.warn(`Knowledge file not found at: ${fullPath}`);
+                const knowledgeRoot = path.resolve(__dirname, "..", "characters", "knowledge");
+for (const knowledgeItem of runtime.character.knowledge || []) {
+    if (
+        typeof knowledgeItem === "object" &&
+        knowledgeItem !== null &&
+        "type" in knowledgeItem &&
+        knowledgeItem.type === "directory" &&
+        "directory" in knowledgeItem &&
+        typeof (knowledgeItem as any).directory === "string"
+    ) {
+        const dirPath = path.resolve(knowledgeRoot, (knowledgeItem as any).directory);
+        if (fs.existsSync(dirPath)) {
+            const files = await fs.promises.readdir(dirPath);
+            for (const file of files) {
+                if (file.match(/\.(txt|md|pdf)$/i)) {
+                    const filePath = path.join((knowledgeItem as any).directory, file);
+                    const fullPath = path.resolve(knowledgeRoot, filePath);
+                    if (fs.existsSync(fullPath)) {
+                        await runtime.addKnowledge({ path: filePath }, (knowledgeItem as any).shared);
+                        elizaLogger.debug(`[RAG Directory] Added knowledge file: ${filePath} for ${runtime.character.name}`);
+                    } else {
+                        elizaLogger.warn(`[RAG Directory] Knowledge file not found at: ${fullPath}`);
+                    }
                 }
+            }
+            elizaLogger.debug(`[RAG Directory] Processed ${files.length} files in ${(knowledgeItem as any).directory} for ${runtime.character.name}`);
+        } else {
+            elizaLogger.warn(`[RAG Directory] Directory not found at: ${dirPath}`);
+        }
+    }
+}
       
                 // Sanity CMS knowledge
                 try {
                   const sanityItems = await loadSanityKnowledge({
                     agentId: runtime.agentId,
                   });
-                  elizaLogger.info(`Fetched Sanity items for ${runtime.character.name}:`, {
+                  elizaLogger.debug(`Fetched Sanity items for ${runtime.character.name}:`, {
                     count: sanityItems.length,
                     items: sanityItems.map((item) => ({
                       id: item.id,
@@ -988,9 +1226,9 @@ const hasValidRemoteUrls = () =>
                   });
                 }
       
-                elizaLogger.info(`Successfully added knowledge for ${runtime.character.name}`);
+                elizaLogger.debug(`Successfully added knowledge for ${runtime.character.name}`);
               } else {
-                elizaLogger.info(`RAG disabled for ${runtime.character.name}, skipping knowledge addition`);
+                elizaLogger.debug(`RAG disabled for ${runtime.character.name}, skipping knowledge addition`);
               }
             } catch (error) {
               elizaLogger.error(`Failed to add knowledge for ${runtime.character.name}:`, {
@@ -999,6 +1237,54 @@ const hasValidRemoteUrls = () =>
               });
             }
           }
+          // Set up file watcher for dynamic knowledge updates
+// Set up Chokidar file watcher for dynamic knowledge updates
+        const knowledgeRoot = path.join(process.cwd(),  'characters', 'knowledge');
+        const normalizedKnowledgeRoot = path.normalize(knowledgeRoot).replace(/\\/g, '/');
+        elizaLogger.debug(`Setting up Chokidar file watcher for knowledge directory: ${normalizedKnowledgeRoot}`);
+
+        const watcher = chokidar.watch(normalizedKnowledgeRoot, {
+            persistent: true,
+            ignoreInitial: false, // Set to false to debug initial files
+            depth: 99,
+            usePolling: true, // Required for Docker volume mounts
+            interval: 500, // Faster polling for responsiveness
+            binaryInterval: 500,
+            alwaysStat: true,
+            awaitWriteFinish: {
+                stabilityThreshold: 1000, // Reduced for faster detection
+                pollInterval: 100
+            },
+            ignored: ['**/node_modules/**', '**/.git/**', '**/*.tmp', '**/*.bak']
+        });
+
+        const debouncedUpdate = debounce(async (event: string, filePath: string) => {
+            if (!filePath) return;
+            elizaLogger.debug(`Processing chokidar event: ${event} on ${filePath}`);
+            for (const runtime of runtimes) {
+                await updateAgentKnowledge(runtime, event, filePath);
+            }
+        }, 1000);
+
+        watcher
+            .on('all', (event, filePath, stats) => {
+                elizaLogger.debug(`Chokidar raw event: ${event} on ${filePath}`, { stats });
+                if (['add', 'change'].includes(event)) {
+                    debouncedUpdate(event, filePath);
+                }
+            })
+            .on('error', (error) => {
+                if (error instanceof Error) {
+                    elizaLogger.error(`Chokidar error: ${error.message}`, { stack: error.stack });
+                } else {
+                    elizaLogger.error(`Chokidar error: ${String(error)}`);
+                }
+            })
+            .on('ready', () => {
+                elizaLogger.debug(`Chokidar watcher is ready for ${normalizedKnowledgeRoot}`);
+            });
+
+        elizaLogger.debug(`Chokidar file watcher set up for ${normalizedKnowledgeRoot}`);
       
           return runtimes;
         } catch (error) {

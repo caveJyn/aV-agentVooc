@@ -14,7 +14,7 @@
 ## 🚩 Overview
 
 <div align="center">
-  agentVooc is an operating system for AI agents, forked from elizaOS. It powers applications running on agentvooc.com. This is a monorepo that integrates Sanity CMS for managing characters, plugins, and features; Stripe for payments; and SuperTokens for user management.
+  agentVooc is an operating system for AI agents, forked from elizaOS. It powers applications running on agentvooc.com. This is a monorepo that integrates Sanity CMS for managing characters, plugins, and features; Stripe for payments; and Clerk for user management.
 </div>
 
 ## ✨ Features
@@ -24,7 +24,7 @@
 - 📚 Document ingestion and interaction.
 - 💾 Retrievable memory and document store
 - 🚀 Extensible with custom plugins and clients.
-- 📦 Integrated with Sanity CMS, Stripe, and SuperTokens.
+- 📦 Integrated with Sanity CMS, Stripe, and Clerk.
 
 ## Video Tutorials
 
@@ -89,16 +89,9 @@ Email (Optional, for Email Plugin)
 - **EMAIL_INCOMING_USER=your-email@domain.com**
 - **EMAIL_INCOMING_PASS=your-app-password**
 
-SuperTokens (User Management)
-- **SUPERTOKENS_CONNECTION_URI=your-supertokens-uri**
-- **SUPERTOKENS_API_KEY=your-api-key (for managed service)**
-- **PASSWORDLESS_CODE_LIFETIME=600000**
-- **PASSWORDLESS_MAX_CODE_INPUT_ATTEMPTS=3**
-
-Stripe (Payments)
-- **VITE_STRIPE_PUBLISHABLE_KEY=your-publishable-key**
-- **STRIPE_SECRET_KEY=your-secret-key**
-- **STRIPE_WEBHOOK_SECRET=your-webhook-secret**
+For Chipi Pay SDK.
+- **CHIPI_PUBLIC_API_KEY**
+- **CHIPI_SECRET_API_KE**
 
 #### 5. Start agentVooc
 ```bash
@@ -181,33 +174,15 @@ There is now a [paper](https://arxiv.org/pdf/2501.06781) you can cite for the pa
 agentVooc/
 ├── packages/
 │   ├── core/           # Core Eliza functionality
-│   ├── clients/        # Client implementations
-│   └── actions/        # Custom actions
 ├── docs/              # Documentation
 ├── scripts/           # Utility scripts
 └── examples/          # Example implementations
 ```
 
-## 🤝 Contributing
+## License
 
-We welcome contributions! Here's how you can help:
+This project is licensed under the [Apache 2.0 License](./LICENSE).
 
-### Getting Started
-1. Fork the repository
-2. Create a new branch: `git checkout -b feature/your-feature-name`
-3. Make your changes
-4. Run tests: `pnpm test`
-5. Submit a pull request
-
-### Types of Contributions
-- 🐛 Bug fixes
-- ✨ New features
-- 📚 Documentation improvements
-- 🌍 Translations
-- 🧪 Test improvements
-
-### Code Style
-- Follow the existing code style
-- Add comments for complex logic
-- Update documentation for changes
-- Add tests for new features
+© 2025 [Vooc LLC](https://agentvooc.com).  
+The **agentVooc** brand, designs, and AI models are proprietary and protected under applicable intellectual property laws.  
+For commercial partnerships or extended licensing, please contact **legal@agentvooc.com**.

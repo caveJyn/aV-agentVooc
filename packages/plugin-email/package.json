@@ -15,6 +15,7 @@
         "format:fix": "biome format --write ."
     },
     "dependencies": {
+        "@elizaos-plugins/plugin-shared-email-sanity": "workspace:^",
         "@elizaos/core": "workspace:^",
         "@google-cloud/bigquery": "^7.0.0",
         "@google-cloud/documentai": "^9.4.0",

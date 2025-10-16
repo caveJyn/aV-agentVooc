@@ -157,7 +157,6 @@ export default {
             options: {
               hotspot: true,
             },
-            validation: (Rule: any) => Rule.required(),
           },
         ],
       },
@@ -199,6 +198,14 @@ export default {
                     type: "string",
                     validation: (Rule: any) => Rule.required(),
                   },
+                  {
+                  name: "image",
+                  title: "Author Image",
+                  type: "image",
+                  options: {
+                    hotspot: true,
+                  },
+                },
                 ],
               },
             ],
@@ -211,6 +218,15 @@ export default {
             description: "E.g., 'Join 10,000+ happy users'",
             validation: (Rule: any) => Rule.required(),
           },
+          {
+          name: "sectionImage",
+          title: "Section Image",
+          type: "image",
+          options: {
+            hotspot: true,
+          },
+          description: "Image to display in the testimonials section",
+        },
         ],
       },
       // CTA Section
@@ -237,6 +253,17 @@ export default {
             type: "string",
             validation: (Rule: any) => Rule.required(),
           },
+           {
+      name: "ctaUrl",
+      title: "CTA URL",
+      type: "url",
+      validation: (Rule) =>
+        Rule.uri({
+          allowRelative: true, // Allow relative URLs like /blog/how-it-works
+          scheme: ["http", "https"], // Restrict absolute URLs to http/https
+        }),
+      description: "Enter a relative URL (e.g., /blog/how-it-works) or absolute URL for the CTA button",
+    },
         ],
       },
       // Footer Section
@@ -334,6 +361,43 @@ export default {
             ],
             validation: (Rule) => Rule.unique(),
           },
+          {
+      name: "socialLinks",
+      title: "Social Links",
+      type: "array",
+      of: [
+        {
+          type: "object",
+          fields: [
+            {
+              name: "platform",
+              title: "Platform",
+              type: "string",
+              options: {
+                list: [
+                  { title: "Twitter", value: "twitter" },
+                  { title: "Facebook", value: "facebook" },
+                  { title: "WhatsApp", value: "whatsapp" },
+                  { title: "GitHub", value: "github" },
+                  { title: "LinkedIn", value: "linkedin" },
+                ],
+              },
+              validation: (Rule) => Rule.required(),
+            },
+            {
+              name: "url",
+              title: "URL",
+              type: "url",
+              validation: (Rule) =>
+                Rule.required().uri({
+                  scheme: ["http", "https"],
+                }),
+            },
+          ],
+        },
+      ],
+      validation: (Rule) => Rule.unique(),
+    },
         ],
       },
       // Sub-Footer Section

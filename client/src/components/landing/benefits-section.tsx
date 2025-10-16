@@ -1,15 +1,19 @@
-// /home/cave/projects/bots/venv/elizaOS_env/eliza-main/client/src/components/landing/benefits-section.tsx
+interface ImageVariants {
+  main: string;
+  thumbnail: string;
+  medium: string;
+}
+
 interface BenefitsSectionProps {
   benefitsSection: {
     heading: string;
     description: string;
     benefitsList: string[];
-    image: string;
+    image: ImageVariants;
   };
 }
 
 export const BenefitsSection = ({ benefitsSection }: BenefitsSectionProps) => {
-  // Fallback values
   const heading = benefitsSection.heading || "Solve Your Biggest Challenges";
   const description =
     benefitsSection.description ||
@@ -22,29 +26,45 @@ export const BenefitsSection = ({ benefitsSection }: BenefitsSectionProps) => {
           "Make Smarter Decisions",
           "Scale Effortlessly",
         ];
-  const image = benefitsSection.image || "/dashboard-screenshot.png";
+  const image = "/ccfade.png"; // Use main image from props, fallback to default
 
   return (
-    <section className="py-24 px-4">
+    <section className="py-16 px-4 bg-agentvooc-secondary-bg animate-fade-in" aria-label="Benefits">
       <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center gap-8">
         <div className="md:w-1/2">
-          <h2 className="text-4xl md:text-5xl font-bold mb-4 text-agentvooc-primary relative">
+          <h2 className="text-4xl md:text-5xl font-bold mb-4 relative">
             {heading}
             <span className="absolute bottom-0 left-0 w-24 h-1 bg-agentvooc-accent -mb-3"></span>
           </h2>
-          <p className="text-agentvooc-secondary mb-4">{description}</p>
-          <ul className="list-disc list-inside text-agentvooc-secondary custom-bullets">
+          <p className="mb-4">{description}</p>
+          <ul className="list-disc list-inside custom-bullets space-y-2">
             {benefitsList.map((benefit, index) => (
-              <li key={index}>{benefit}</li>
+              <li key={index} className="flex items-center">
+                <span className="text-agentvooc-accent mr-2">•</span>
+                {benefit}
+              </li>
             ))}
           </ul>
         </div>
         <div className="md:w-1/2">
-          <img
-            src={image}
-            alt="Benefits"
-            className="rounded-lg border border-agentvooc-accent/30 shadow-agentvooc-glow transform rotate-2 hover:rotate-0 transition-transform duration-300"
-          />
+          <div className="text-xl md:text-3xl justify-center flex font-bold mb-4 relative">
+            Create Your Character
+          </div>
+          <div className="relative w-full">
+            <img
+              src={image}
+              alt="Benefits of agentVooc"
+              className="rounded-lg shadow-agentvooc-glow w-full h-auto object-contain"
+            />
+            <div
+              className="absolute inset-0 bg-black/10 rounded-lg"
+              aria-hidden="true"
+            ></div>
+            <div
+              className="absolute bottom-0 left-0 w-full h-[30%] bg-gradient-to-t from-agentvooc-secondary-bg to-transparent"
+              aria-hidden="true"
+            ></div>
+          </div>
         </div>
       </div>
     </section>

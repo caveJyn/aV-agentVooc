@@ -8,9 +8,9 @@
         "skipLibCheck": true,
         "baseUrl": "./",
         "paths": {
-            "@/*": ["./src/*"],
-
-        },
+    "@/*": ["./src/*"],
+    // "@elizaos-plugins/*": ["../packages/*/src"]
+},
         /* Bundler mode */
         "moduleResolution": "bundler",
         "allowImportingTsExtensions": true,

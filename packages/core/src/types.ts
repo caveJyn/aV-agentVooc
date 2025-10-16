@@ -713,6 +713,49 @@ export interface ModelConfiguration {
 
 export type TemplateType = string | ((options: { state: State }) => string);
 
+
+
+export type SanityReference = {
+    _type: "reference";
+    _ref: string;
+    _key?: string;
+    _id?: string; 
+  };
+
+
+// Add this interface near the top of types.ts
+export interface SanityUser {
+    _id: string;
+    name?: string;
+    email?: string;
+    clerkUserId?: string; // New: Clerk's raw user ID
+    userId: string; // Required field from the User schema // Internal UUID string
+    // Optionally include other fields from the User schema if needed
+    interest?: string;
+    referralSource?: string;
+    createdAt?: string;
+    userType?: "email" | "crypto";
+    stripeCustomerId?: string;
+    stripeSubscriptionId?: string;
+    subscriptionStatus?: "none" | "active" | "trialing" | "canceled" | "past_due" | "incomplete";
+    trialStartDate?: string;
+    trialEndDate?: string;
+    cancelAtPeriodEnd?: boolean;
+    activePriceIds?: string[];
+    hasUsedTrial?: boolean;
+  }
+
+
+export interface Secret {
+  key: string;
+  value?: string; // Used in request body and before encryption
+  encryptedValue?: {
+    iv: string;
+    ciphertext: string;
+  };
+  hash?: string;
+}
+
 /**
  * Configuration for an agent character
  */
@@ -817,6 +860,7 @@ export type Character = {
     /** Optional configuration */
     settings?: {
         secrets?: { [key: string]: string };
+        secretsDynamic?: Secret[];
         intiface?: boolean;
         imageSettings?: {
             steps?: number;
@@ -857,6 +901,23 @@ export type Character = {
         };
         transcription?: TranscriptionProvider;
         ragKnowledge?: boolean;
+        email?: {
+      outgoing: {
+        service: "gmail" | "smtp";
+        host: string;
+        port: number;
+        secure: boolean;
+        user: string;
+        pass: string;
+      };
+      incoming: {
+        service: "imap";
+        host: string;
+        port: number;
+        user: string;
+        pass: string;
+      };
+    };
     };
 
     /** Optional client-specific config */
@@ -956,15 +1017,17 @@ export type Character = {
     twitterSpaces?: TwitterSpaceDecisionOptions;
 
 
-    /** Optional reference to the user who created the character */
-    createdBy?: {
-        _ref: string;
-    } | {
-        _id: string;
-        name?: string;
-        email?: string;
-        // Add other User fields as needed
-    };
+   /** Optional reference to the user who created the character */
+   createdBy?: SanityReference | SanityUser
+
+
+
+   
+   enabled?: boolean;
+
+   profile: {
+    image: string;
+}
 };
 
 export interface TwitterSpaceDecisionOptions {
@@ -1173,6 +1236,8 @@ export interface IDatabaseCacheAdapter {
     }): Promise<boolean>;
 
     deleteCache(params: { agentId: UUID; key: string }): Promise<boolean>;
+
+    clearAgentCache(agentId: UUID): Promise<void>;
 }
 
 export interface IMemoryManager {
@@ -1267,6 +1332,7 @@ export interface ICacheManager {
     get<T = unknown>(key: string): Promise<T | undefined>;
     set<T>(key: string, value: T, options?: CacheOptions): Promise<void>;
     delete(key: string): Promise<void>;
+    clearAgentCache(agentId: UUID): Promise<void>;
 }
 
 export abstract class Service {
@@ -1380,6 +1446,7 @@ export interface IAgentRuntime {
     ): Promise<State>;
 
     updateRecentMessageState(state: State): Promise<State>;
+    
 }
 
 export interface IImageDescriptionService extends Service {
@@ -1618,6 +1685,7 @@ export enum CacheKeyPrefix {
 }
 
 export interface DirectoryItem {
+    type: 'directory';
     directory: string;
     shared?: boolean;
 }
@@ -1627,8 +1695,3 @@ export interface ChunkRow {
     // Add other properties if needed
 }
 
-export type SanityReference = {
-    _type: "reference";
-    _ref: string;
-    _key?: string;
-  };

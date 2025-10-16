@@ -4,10 +4,10 @@ import {visionTool} from '@sanity/vision'
 import {schemaTypes} from './schemas'
 
 export default defineConfig({
-  name: 'default',
-  title: 'elizaOS',
+  name: 'agentVooc',
+  title: 'agentVooc',
 
-  projectId: 'baxy8nry',
+  projectId: '1hzhifby',
   dataset: 'production',
 
   plugins: [structureTool(), visionTool()],

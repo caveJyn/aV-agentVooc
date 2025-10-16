@@ -37,7 +37,12 @@ Note that {{agentName}} is capable of reading/seeing/hearing various forms of me
 
 {{recentMessages}}
 
+# Available Actions
+The following actions are currently available to you:
 {{actions}}
+
+You MUST only suggest or perform actions from the above list. Do NOT suggest or mention any actions that are not listed, such as posting tweets if the Twitter plugin is not available.
+
 
 # Instructions: Write the next message for {{agentName}}.
 ` + messageCompletionFooter;

@@ -1,5 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
-import info from "@/lib/info.json";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Sidebar,
   SidebarContent,
@@ -16,28 +15,48 @@ import {
   SidebarInput,
   SidebarMenuAction,
   SidebarMenuBadge,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { apiClient } from "@/lib/api";
-import { NavLink, useLocation } from "react-router-dom";
-import type { UUID } from "@elizaos/core";
-import { Cog, User, Edit } from "lucide-react";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import type { UUID, Character } from "@elizaos/core";
+import { Book, Cog, User, Edit, Plus, Mail } from "lucide-react";
 import ConnectionStatus from "./connection-status";
-import { signOut } from "supertokens-web-js/recipe/session";
 import { Button } from "@/components/ui/button";
-import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
-import { useState } from "react";
+import { MouseEvent, useState } from "react";
+import { Avatar, AvatarImage } from "./ui/avatar";
+import { useUser, useClerk } from "@clerk/clerk-react";
+import { clearCookies } from "@/lib/clearCookies";
 
 export function AppSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const { setOpen, setOpenMobile, isMobile } = useSidebar();
   const { toast } = useToast();
-  const [searchQuery, setSearchQuery] = useState("");
+  const queryClient = useQueryClient();
+  const { isSignedIn, isLoaded } = useUser(); // Use Clerk's useUser
+  const { signOut } = useClerk(); // Use Clerk's signOut
 
+  // Fetch user data
+  const userQuery = useQuery({
+    queryKey: ["user"],
+    queryFn: () => apiClient.getUser(),
+    enabled: !!isSignedIn && isLoaded,
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchInterval: false,
+  });
+
+  // Fetch all agents/characters
   const query = useQuery({
     queryKey: ["agents"],
     queryFn: () => apiClient.getAgents(),
-    refetchInterval: 5_000,
+    enabled: !!isSignedIn && isLoaded && !!userQuery.data?.user,
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchInterval: false,
   });
 
   const agents = query?.data?.agents || [];
@@ -47,55 +66,134 @@ export function AppSidebar() {
     agent.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleLogout = async () => {
+  // Fetch character data for each filtered agent
+  const characterQueries = useQuery({
+    queryKey: ["characters", filteredAgents.map((a: { id: UUID }) => a.id)],
+    queryFn: async () => {
+      const results = await Promise.all(
+        filteredAgents.map((agent: { id: UUID }) =>
+          apiClient
+            .getCharacter(agent.id)
+            .then((data: { character: Character }) => ({
+              agentId: agent.id,
+              character: data.character,
+            }))
+            .catch((_error: Error) => {
+              return { agentId: agent.id, character: null };
+            })
+        )
+      );
+      return Object.fromEntries(results.map((r) => [r.agentId, r.character]));
+    },
+    staleTime: 30 * 60 * 1000,
+    enabled: filteredAgents.length > 0 && !!isSignedIn && isLoaded,
+  });
+
+  const handleLogout = async (e: MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    const cacheBust = `?cb=${Date.now()}`;
+
     try {
+      console.log("[APP_SIDEBAR] Starting logout process");
+
+      // Cancel & clear all queries
+      await queryClient.cancelQueries();
+      queryClient.invalidateQueries();
+      queryClient.clear();
+
+      // Sign out using Clerk
       await signOut();
-      toast({
-        title: "Success!",
-        description: "Logged out successfully.",
-      });
-      navigate("/auth?mode=signin");
-    } catch (err: any) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to log out. Please try again.",
-      });
+      console.log("[APP_SIDEBAR] Clerk signOut complete");
+
+      // Clear client-side storage & cookies
+      localStorage.clear();
+      sessionStorage.clear();
+      clearCookies();
+      setSearchQuery("");
+
+      // Show success toast
+      toast({ title: "Success", description: "Logged out successfully." });
+
+      // Force navigation to auth page
+      window.location.href = `/auth${cacheBust}`;
+    } catch (err) {
+      console.error("[APP_SIDEBAR] Logout error:", err);
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to log out.";
+
+      // Graceful fallback cleanup
+      localStorage.clear();
+      sessionStorage.clear();
+      clearCookies();
+      setSearchQuery("");
+
+      toast({ variant: "destructive", title: "Error", description: errorMessage });
+
+      navigate(`/auth${cacheBust}`, { replace: true });
+      if (isMobile) setOpenMobile(false);
+      else setOpen(false);
+
+      setTimeout(() => {
+        if (window.location.pathname !== "/auth") {
+          window.location.href = `/auth${cacheBust}`;
+        }
+      }, 100);
     }
   };
 
-  const handleEditAgent = (agentId: UUID) => {
-    toast({
-      title: "Edit Agent",
-      description: `Editing agent ${agentId} (not implemented).`,
-    });
+  const handleLogin = () => {
+    navigate("/auth");
   };
 
+  const handleEditAgent = (agentId: UUID) => {
+    navigate(`/edit-character/${agentId}`);
+  };
+
+  const handleCreateCharacter = () => {
+    if (isMobile) {
+      setOpenMobile(false);
+    } else {
+      setOpen(true);
+    }
+    navigate("/create-character");
+  };
+
+  if (!isLoaded) return null; // Wait for Clerk to load
+
   return (
-    <Sidebar>
+    <Sidebar className="bg-agentvooc-secondary-bg text-agentvooc-primary border-r border-agentvooc-border shadow-agentvooc-glow">
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
-              <NavLink to="/">
-                <img
-                  alt="elizaos-icon"
-                  src="/elizaos-icon.png"
-                  width="100%"
-                  height="100%"
-                  className="size-7"
-                />
-                <div className="flex flex-col gap-0.5 leading-none">
-                  <span className="font-semibold">ElizaOS</span>
-                  <span className="">v{info?.version}</span>
+              <NavLink
+                to="/home"
+                className="hover:bg-agentvooc-secondary-accent hover:text-agentvooc-accent transition-all"
+              >
+                <div className="flex items-center gap-0.5 leading-none">
+                  <Avatar className="size-8 p-1 border rounded-full select-none">
+                    <AvatarImage src="/aV-logo.png" />
+                  </Avatar>
+                  <span className="font-semibold text-agentvooc-primary">
+                    agentVooc
+                  </span>
+                  <span className="text-agentvooc-accent">.</span>
                 </div>
               </NavLink>
             </SidebarMenuButton>
           </SidebarMenuItem>
+          <SidebarMenuItem className="flex justify-end mr-2">
+            <SidebarTrigger className="hover:bg-agentvooc-secondary-accent hover:text-agentvooc-accent"></SidebarTrigger>
+          </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarTrigger className="w-full justify-start">
-              <span>Toggle Sidebar</span>
-            </SidebarTrigger>
+            <Button
+              variant="default"
+              className="flex justify-start w-full"
+              onClick={handleCreateCharacter}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Create Character
+            </Button>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
@@ -104,15 +202,17 @@ export function AppSidebar() {
           <SidebarGroupLabel>Agents</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              <SidebarMenuItem>
+              <SidebarMenuItem className="mr-2">
                 <SidebarInput
                   placeholder="Search agents..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="mx-2"
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    setSearchQuery(e.target.value)
+                  }
+                  className="mx-2 border-agentvooc-accent/50 focus:ring-agentvooc-accent"
                 />
               </SidebarMenuItem>
-              {query?.isPending ? (
+              {query?.isPending || characterQueries.isPending ? (
                 <>
                   {Array.from({ length: 5 }).map((_, index) => (
                     <SidebarMenuItem key={`skeleton-${index}`}>
@@ -122,30 +222,44 @@ export function AppSidebar() {
                 </>
               ) : filteredAgents.length === 0 ? (
                 <SidebarMenuItem>
-                  <span className="text-sm text-sidebar-foreground/70 px-2">
+                  <p className="text-sm text-agentvooc-secondary px-2">
                     No agents found
-                  </span>
+                  </p>
                 </SidebarMenuItem>
               ) : (
                 filteredAgents.map((agent: { id: UUID; name: string }) => (
-                  <SidebarMenuItem key={agent.id}>
+                  <SidebarMenuItem key={agent.id} className="group">
                     <SidebarMenuButton
                       asChild
                       isActive={location.pathname.includes(agent.id)}
                       tooltip={`Chat with ${agent.name}`}
+                      className="transition-all"
                     >
                       <NavLink to={`/chat/${agent.id}`}>
-                        <User />
+                        <User className="" />
                         <span>{agent.name}</span>
                       </NavLink>
                     </SidebarMenuButton>
                     <SidebarMenuAction
                       onClick={() => handleEditAgent(agent.id)}
                       showOnHover
+                      className="p-1 text-agentvooc-accent"
                     >
-                      <Edit />
+                      <Edit className="h-4 w-4" />
                     </SidebarMenuAction>
                     <SidebarMenuBadge>.</SidebarMenuBadge>
+                    <KnowledgeVaultLink
+                      agentId={agent.id}
+                      agentName={agent.name}
+                      character={characterQueries.data?.[agent.id]}
+                      isCharacterPending={characterQueries.isPending}
+                    />
+                    <EmailVaultLink
+                      agentId={agent.id}
+                      agentName={agent.name}
+                      character={characterQueries.data?.[agent.id]}
+                      isCharacterPending={characterQueries.isPending}
+                    />
                   </SidebarMenuItem>
                 ))
               )}
@@ -160,21 +274,54 @@ export function AppSidebar() {
               <NavLink
                 to="https://elizaos.github.io/eliza/docs/intro/"
                 target="_blank"
+                className="hover:bg-agentvooc-secondary-accent hover:text-agentvooc-accent"
               >
-                <span>Documentation</span>
+                <Book className="text-agentvooc-accent" />
+                <span>agentVooc OS-Fork of ElizaOS</span>
               </NavLink>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton disabled>
-              <Cog />
-              <span>Settings</span>
+            <SidebarMenuButton asChild>
+              <NavLink
+                to="https://agentvooc.com/company/blog/how-it-works"
+                className="hover:bg-agentvooc-secondary-accent hover:text-agentvooc-accent"
+              >
+                <Cog className="text-agentvooc-accent" />
+                <span>How it works</span>
+              </NavLink>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <Button onClick={handleLogout} variant="outline" className="w-full">
-              Logout
-            </Button>
+            <SidebarMenuButton asChild>
+              <NavLink
+                to="/settings"
+                className="hover:bg-agentvooc-secondary-accent hover:text-agentvooc-accent"
+              >
+                <Cog className="text-agentvooc-accent" />
+                <span>Settings</span>
+              </NavLink>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <p className="text-sm text-agentvooc-secondary px-2">
+              {isLoaded && isSignedIn && userQuery.isLoading
+                ? "Loading..."
+                : isSignedIn && userQuery.data?.user?.email
+                ? userQuery.data.user.email
+                : "User Logged In"}
+            </p>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            {isSignedIn ? (
+              <Button onClick={handleLogout} variant="default" className="">
+                Logout
+              </Button>
+            ) : (
+              <Button onClick={handleLogin} variant="default" className="">
+                Log In
+              </Button>
+            )}
           </SidebarMenuItem>
           <SidebarMenuItem>
             <ConnectionStatus />
@@ -182,5 +329,86 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarFooter>
     </Sidebar>
+  );
+}
+
+// KnowledgeVaultLink and EmailVaultLink remain unchanged
+function KnowledgeVaultLink({
+  agentId,
+  agentName,
+  character,
+  isCharacterPending,
+}: {
+  agentId: UUID;
+  agentName: string;
+  character: Character | null;
+  isCharacterPending: boolean;
+}) {
+  const location = useLocation();
+
+  if (isCharacterPending || !character) {
+    return null;
+  }
+
+  if (!character.settings?.ragKnowledge) {
+    return null;
+  }
+
+  return (
+    <SidebarMenu className="ml-4">
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          asChild
+          isActive={location.pathname === `/knowledge/${agentId}`}
+          tooltip={`Knowledge Vault for ${agentName}`}
+        >
+          <NavLink to={`/knowledge/${agentId}`}>
+            <Book className="text-agentvooc-accent" />
+            <span>Knowledge Vault</span>
+          </NavLink>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    </SidebarMenu>
+  );
+}
+
+function EmailVaultLink({
+  agentId,
+  agentName,
+  character,
+  isCharacterPending,
+}: {
+  agentId: UUID;
+  agentName: string;
+  character: Character | null;
+  isCharacterPending: boolean;
+}) {
+  const location = useLocation();
+
+  if (isCharacterPending || !character) {
+    return null;
+  }
+
+  if (
+    !character.plugins?.map((p: any) => (typeof p === "string" ? p : p.name)).includes("email")
+  ) {
+    return null;
+  }
+
+  return (
+    <SidebarMenu className="ml-4">
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          asChild
+          isActive={location.pathname === `/email-vault/${agentId}`}
+          tooltip={`Email Vault for ${agentName}`}
+        >
+          <NavLink to={`/email-vault/${agentId}`}>
+            <Mail className="text-agentvooc-accent" />
+            <span>Email Vault</span>
+          </NavLink>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    </SidebarMenu>
   );
 }

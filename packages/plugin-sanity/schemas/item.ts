@@ -31,6 +31,48 @@ export default {
       title: "Stripe Price ID",
       type: "string",
     },
+     {
+      name: "maxAgents",
+      title: "Max Agents",
+      type: "number",
+      description: "Maximum number of agents allowed for this subscription plan",
+      validation: (Rule) => Rule.min(0),
+    },
+    {
+      name: "maxKnowledgeDocsPerAgent",
+      title: "Max Knowledge Documents per Agent",
+      type: "number",
+      description: "Maximum number of knowledge documents per agent",
+      validation: (Rule) => Rule.min(0),
+    },
+    {
+      name: "maxTotalCharsPerAgent",
+      title: "Max Total Characters per Agent",
+      type: "number",
+      description: "Maximum total characters across all knowledge documents per agent",
+      validation: (Rule) => Rule.min(0),
+    },
+    {
+      name: "maxCharsPerKnowledgeDoc",
+      title: "Max Characters per Knowledge Document",
+      type: "number",
+      description: "Maximum characters allowed per knowledge document (optional)",
+      validation: (Rule) => Rule.min(0),
+    },
+      {
+      name: "maxResponsesPerMonth",
+      title: "Max Responses Per Month",
+      type: "number",
+      description: "Maximum number of responses allowed per month",
+      validation: (Rule) => Rule.min(0),
+    },
+    {
+      name: "maxTokensPerMonth",
+      title: "Max Tokens Per Month",
+      type: "number",
+      description: "Maximum number of tokens allowed per month",
+      validation: (Rule) => Rule.min(0),
+    },
     {
       name: "createdAt",
       title: "Created At",
@@ -45,15 +87,27 @@ export default {
       name: "itemType",
       title: "Item Type",
       type: "string",
-      description: "Select the type of item (e.g., subscription for recurring plans, one-time for single purchases).",
+      description: "Type of item (e.g., 'base', 'plugin')",
       options: {
         list: [
-          { title: "Subscription", value: "subscription" },
-          { title: "One-Time Purchase", value: "one-time" },
+          { title: "Base Subscription", value: "base" },
+          { title: "Plugin Subscription", value: "plugin" },
         ],
         layout: "dropdown",
       },
       validation: (Rule) => Rule.required(),
+    },
+    {
+      name: "pluginName",
+      title: "Plugin Name",
+      type: "string",
+      description: "Name of the plugin this item corresponds to (e.g., 'email', 'telegram', 'twitter')",
+      validation: (Rule) => Rule.custom((value, context) => {
+        if (context.document.itemType === "plugin") {
+          return value ? true : "Plugin name is required for plugin items";
+        }
+        return true;
+      }),
     },
     {
       name: "features",
@@ -61,20 +115,6 @@ export default {
       type: "array",
       of: [{ type: "string" }],
       description: "List of key features for this subscription plan (e.g., '1 AI character', '100 conversations/month').",
-    },
-    {
-      name: "allowedPlugins",
-      title: "Allowed Plugins",
-      type: "array",
-      of: [{ type: "string" }],
-      description: "List of plugin identifiers enabled by this subscription plan (e.g., 'telegram', 'solana', 'twitter').",
-      options: {
-        list: [
-          { title: "Telegram", value: "telegram" },
-          { title: "Solana", value: "solana" },
-          { title: "Twitter", value: "twitter" },
-        ],
-      },
     },
     {
       name: "isPopular",

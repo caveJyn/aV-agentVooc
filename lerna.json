@@ -2,7 +2,6 @@
     "version": "0.25.8",
     "packages": [
         "packages/*",
-        "docs",
         "agent",
         "client",
         "!packages/_examples"

@@ -47,8 +47,8 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
         this.knowledgeRoot = opts.knowledgeRoot;
     }
 
-    private readonly defaultRAGMatchThreshold = 0.85;
-    private readonly defaultRAGMatchCount = 8;
+    private readonly defaultRAGMatchThreshold = 0.6;
+    private readonly defaultRAGMatchCount = 6;
 
     /**
      * Common English stop words to filter out from query analysis
@@ -198,14 +198,14 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
             if (directResults.length > 0) {
                 return directResults;
             }else{
-                elizaLogger.info(`[RAG Result] No items found for ID: ${params.id}`);
+                elizaLogger.debug(`[RAG Result] No items found for ID: ${params.id}`);
             }
         }
 
         // If no id or no direct results, perform semantic search
         if (params.query) {
             try {
-                elizaLogger.info(`[RAG Query] Performing semantic search`, {
+                elizaLogger.debug(`[RAG Query] Performing semantic search`, {
                     query: params.query,
                     conversationContext: params.conversationContext?.slice(0, 200) || "none",
                     limit: params.limit || this.defaultRAGMatchCount,
@@ -240,7 +240,7 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
                         searchText: processedQuery,
                     });
 
-                    elizaLogger.info(`[RAG Result] Retrieved ${results.length} items for query: ${params.query}`, {
+                    elizaLogger.debug(`[RAG Result] Retrieved ${results.length} items for query: ${params.query}`, {
                         items: results.map(item => ({
                             id: item.id,
                             text: item.content.text.slice(0, 100),
@@ -371,6 +371,11 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
             elizaLogger.error(`Error processing knowledge ${item.id}:`, error);
             throw error;
         }
+
+         // Clear cache after creation
+    await this.runtime.cacheManager.clearAgentCache(this.runtime.agentId);
+    elizaLogger.debug(`[RAG] Cache cleared for agent ${this.runtime.agentId} after creating knowledge ${item.id}`);
+        
     }
 
     async searchKnowledge(params: {
@@ -402,6 +407,9 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
 
     async removeKnowledge(id: UUID): Promise<void> {
         await this.runtime.databaseAdapter.removeKnowledge(id);
+         // Clear cache after removal
+    await this.runtime.cacheManager.clearAgentCache(this.runtime.agentId);
+    elizaLogger.debug(`[RAG] Cache cleared for agent ${this.runtime.agentId} after removing knowledge ${id}`);
     }
 
     async clearKnowledge(shared?: boolean): Promise<void> {
@@ -531,6 +539,9 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
                 error
             );
         }
+         // Clear cache after cleanup
+    await this.runtime.cacheManager.clearAgentCache(this.runtime.agentId);
+    elizaLogger.debug(`[RAG] Cache cleared for agent ${this.runtime.agentId} after cleanup`);
     }
 
     public generateScopedId(path: string, isShared: boolean): UUID {
@@ -544,7 +555,7 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
         const existingKnowledge = await this.getKnowledge({ id: knowledgeId });
     
         if (existingKnowledge.length > 0 && existingKnowledge[0].content.text === content) {
-          elizaLogger.info(`String knowledge ${knowledgeId} unchanged, skipping`);
+          elizaLogger.debug(`String knowledge ${knowledgeId} unchanged, skipping`);
           return;
         }
     
@@ -566,7 +577,7 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
           },
           createdAt: Date.now(),
         });
-        elizaLogger.info(`Added string knowledge: ${content.slice(0, 50)}...`);
+        elizaLogger.debug(`Added string knowledge: ${content.slice(0, 50)}...`);
       }
       async addFileKnowledge(relativePath: string, isShared: boolean): Promise<void> {
         try {
@@ -601,7 +612,7 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
           const existingKnowledge = await this.getKnowledge({ id: knowledgeId });
     
           if (existingKnowledge.length > 0 && existingKnowledge[0].content.text === item.content.text) {
-            elizaLogger.info(`Sanity knowledge: ${knowledgeId} unchanged, skipping`);
+            elizaLogger.debug(`Sanity knowledge: ${knowledgeId} unchanged, skipping`);
             continue;
           }
     
@@ -634,7 +645,7 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
             embedding,
             createdAt: item.createdAt || Date.now(),
           });
-          elizaLogger.info(`Added Sanity knowledge: ${item.content.text.slice(0, 50)}...`);
+          elizaLogger.debug(`Added Sanity knowledge: ${item.content.text.slice(0, 50)}...`);
         }
       }
       
@@ -646,7 +657,7 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
     }): Promise<void> {
         const timeMarker = (label: string) => {
             const time = (Date.now() - startTime) / 1000;
-            elizaLogger.info(`[Timing] ${label}: ${time.toFixed(2)}s`);
+            elizaLogger.debug(`[Timing] ${label}: ${time.toFixed(2)}s`);
         };
 
         const startTime = Date.now();
@@ -654,7 +665,7 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
 
         try {
             const fileSizeKB = new TextEncoder().encode(content).length / 1024;
-            elizaLogger.info(
+            elizaLogger.debug(
                 `[File Progress] Starting ${file.path} (${fileSizeKB.toFixed(2)} KB)`
             );
 
@@ -672,7 +683,7 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
             existingKnowledge.length > 0 &&
             existingKnowledge[0].content.text === content
         ) {
-            elizaLogger.info(
+            elizaLogger.debug(
                 `Knowledge ${file.path} unchanged, skipping`
             );
             return;
@@ -688,7 +699,7 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
             for (const chunk of chunks) {
                 await this.removeKnowledge(chunk.id);
             }
-            elizaLogger.info(`[processFile] Removed ${chunks.length} existing chunks for ${scopedId}`);
+            elizaLogger.debug(`[processFile] Removed ${chunks.length} existing chunks for ${scopedId}`);
         }
 
         
@@ -725,7 +736,7 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
             // Step 4: Generate chunks
             const chunks = await splitChunks(processedContent, 512, 20);
             const totalChunks = chunks.length;
-            elizaLogger.info(`Generated ${totalChunks} chunks`);
+            elizaLogger.debug(`Generated ${totalChunks} chunks`);
             timeMarker("Chunk generation");
 
             // Step 5: Process chunks with larger batches
@@ -774,13 +785,13 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
 
                 processedChunks += batch.length;
                 const batchTime = (Date.now() - batchStart) / 1000;
-                elizaLogger.info(
+                elizaLogger.debug(
                     `[Batch Progress] ${file.path}: Processed ${processedChunks}/${totalChunks} chunks (${batchTime.toFixed(2)}s for batch)`
                 );
             }
 
             const totalTime = (Date.now() - startTime) / 1000;
-            elizaLogger.info(
+            elizaLogger.debug(
                 `[Complete] Processed ${file.path} in ${totalTime.toFixed(2)}s`
             );
 
@@ -788,7 +799,7 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
             //Modified the catch block to handle SQLITE_CONSTRAINT_PRIMARYKEY for all knowledge (not just isShared), logging a skip message instead of throwing.
         } catch (error) {
             if (error?.code === "SQLITE_CONSTRAINT_PRIMARYKEY") {
-                elizaLogger.info(
+                elizaLogger.debug(
                     `Knowledge ${file.path} already exists in database, skipping creation`
                 );
                 return;
@@ -796,5 +807,8 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
             elizaLogger.error(`Error processing file ${file.path}:`, error);
             throw error;
         }
+          // Clear cache after processing
+    await this.runtime.cacheManager.clearAgentCache(this.runtime.agentId);
+    elizaLogger.debug(`[RAG] Cache cleared for agent ${this.runtime.agentId} after processing file ${file.path}`);
     }
 }

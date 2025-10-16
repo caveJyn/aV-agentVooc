@@ -50,7 +50,7 @@ export default {
           const result = await client.fetch(query, params);
           return result.length === 0 || "Name must be unique";
         }),
-      description: "Display name (e.g., 'Eliza'). Must be unique.",
+      description: "Display name (e.g., 'agentVooc'). Must be unique.",
     },
     {
       name: "username",
@@ -67,6 +67,18 @@ export default {
         }),
       description: "Optional username (e.g., 'eliza'). Must be unique if provided.",
     },
+     {
+            name: "profile",
+            type: "object",
+            fields: [
+                {
+                    name: "image",
+                    type: "image",
+                    title: "Profile Image",
+                    options: { hotspot: true },
+                },
+            ],
+        },
     {
       name: "system",
       title: "System Prompt",
@@ -88,40 +100,59 @@ export default {
       description: "List of backstory snippets",
     },
     {
-      name: "messageExamples",
-      title: "Message Examples",
-      type: "array",
-      of: [
+  name: 'messageExamples',
+  type: 'array',
+  title: 'Message Examples',
+  of: [
+    {
+      type: 'object',
+      name: 'conversation',
+      title: 'Conversation',
+      fields: [
         {
-          type: "object",
-          fields: [
+          name: 'messages',
+          type: 'array',
+          title: 'Messages',
+          of: [
             {
-              name: "conversation",
-              title: "Conversation",
-              type: "array",
-              of: [
+              type: 'object',
+              fields: [
                 {
-                  type: "object",
+                  name: 'user',
+                  type: 'string',
+                  title: 'User',
+                  validation: (Rule) => Rule.required().min(1),
+                },
+                {
+                  name: 'content',
+                  type: 'object',
+                  title: 'Content',
                   fields: [
-                    { name: "user", title: "User", type: "string" },
                     {
-                      name: "content",
-                      title: "Content",
-                      type: "object",
-                      fields: [
-                        { name: "text", title: "Text", type: "string" },
-                        { name: "action", title: "Action", type: "string", options: { isOptional: true } },
-                      ],
+                      name: 'text',
+                      type: 'string',
+                      title: 'Text',
+                      validation: (Rule) => Rule.required().min(1),
+                    },
+                    {
+                      name: 'action',
+                      type: 'string',
+                      title: 'Action',
                     },
                   ],
+                  validation: (Rule) => Rule.required(),
                 },
               ],
             },
           ],
+          validation: (Rule) => Rule.min(0),
         },
       ],
-      description: "Example dialogues as conversation arrays",
     },
+  ],
+  validation: (Rule) => Rule.min(0),
+  description: 'Example conversations, each containing a sequence of user and agent messages',
+},
     {
       name: "postExamples",
       title: "Post Examples",
@@ -221,7 +252,7 @@ export default {
               name: "shared",
               title: "Shared",
               type: "boolean",
-              initialValue: false,
+              initialValue: true,
             },
           ],
         },
@@ -242,31 +273,40 @@ export default {
       to: [{ type: "User" }], // Reference to User
     },
      {
-            name: 'settings',
-            type: 'object',
-            title: 'Settings',
-            fields: [
+  name: 'settings',
+  type: 'object',
+  title: 'Settings',
+  fields: [
+    {
+      name: 'secrets',
+      type: 'object',
+      title: 'Secrets',
+      fields: [
+        {
+          name: 'dynamic',
+          type: 'array',
+          title: 'Dynamic Secrets',
+          of: [
+            {
+              type: 'object',
+              fields: [
+                { name: 'key', type: 'string', title: 'Key' },
                 {
-                    name: 'secrets',
-                    type: 'object',
-                    fields: [
-                        {
-                            name: 'dynamic',
-                            type: 'array',
-                            of: [
-                                {
-                                    type: 'object',
-                                    fields: [
-                                        { name: 'key', type: 'string', title: 'Key' },
-                                        { name: 'value', type: 'string', title: 'Value' },
-                                    ],
-                                },
-                            ],
-                            title: 'Dynamic Secrets',
-                        },
-                    ],
-                    title: 'Secrets',
+                  name: 'encryptedValue',
+                  type: 'object',
+                  title: 'Encrypted Value',
+                  fields: [
+                    { name: 'iv', type: 'string', title: 'IV' },
+                    { name: 'ciphertext', type: 'string', title: 'Ciphertext' }
+                  ]
                 },
+                { name: 'hash', type: 'string', title: 'Hash' }
+              ]
+            }
+          ]
+        }
+      ]
+    },
                 { name: 'ragKnowledge', type: 'boolean', title: 'RAG Knowledge' },
                 {
                     name: 'voice',
@@ -276,6 +316,113 @@ export default {
                     ],
                     title: 'Voice',
                 },
+                    {
+      name: 'email',
+      title: 'Email Settings',
+      type: 'object',
+      fields: [
+        {
+          name: 'outgoing',
+          title: 'Outgoing Email',
+          type: 'object',
+          fields: [
+            {
+              name: 'service',
+              title: 'Service',
+              type: 'string',
+              options: {
+                list: [
+                  { title: 'Gmail', value: 'gmail' },
+                  { title: 'SMTP', value: 'smtp' }
+                ]
+              },
+              validation: Rule => Rule.required()
+            },
+            {
+              name: 'host',
+              title: 'Host',
+              type: 'string',
+              hidden: ({ parent }) => parent?.service !== 'smtp', // Safe navigation
+              validation: Rule => Rule.custom((value, { parent }) => {
+                if (parent?.service === 'smtp' && !value) {
+                  return 'Host is required for SMTP';
+                }
+                return true;
+              })
+            },
+            {
+              name: 'port',
+              title: 'Port',
+              type: 'number',
+              hidden: ({ parent }) => parent?.service !== 'smtp', // Safe navigation
+              validation: Rule => Rule.custom((value, { parent }) => {
+                if (parent?.service === 'smtp' && (!value || value <= 0)) {
+                  return 'Valid port is required for SMTP';
+                }
+                return true;
+              })
+            },
+            {
+              name: 'secure',
+              title: 'Secure (TLS)',
+              type: 'boolean',
+              hidden: ({ parent }) => parent?.service !== 'smtp', // Safe navigation
+            },
+            {
+              name: 'user',
+              title: 'Username',
+              type: 'string',
+              validation: Rule => Rule.required()
+            },
+            {
+              name: 'pass',
+              title: 'Password',
+              type: 'string',
+              validation: Rule => Rule.required()
+            }
+          ]
+        },
+        {
+          name: 'incoming',
+          title: 'Incoming Email',
+          type: 'object',
+          fields: [
+            {
+              name: 'service',
+              title: 'Service',
+              type: 'string',
+              options: {
+                list: [{ title: 'IMAP', value: 'imap' }]
+              },
+              initialValue: 'imap',
+              readOnly: true
+            },
+            {
+              name: 'host',
+              title: 'Host',
+              type: 'string',
+            },
+            {
+              name: 'port',
+              title: 'Port',
+              type: 'number',
+              initialValue: 993
+            },
+            {
+              name: 'user',
+              title: 'Username',
+              type: 'string',
+            },
+            {
+              name: 'pass',
+              title: 'Password',
+              type: 'string',
+            }
+          ]
+        }
+      ],
+      hidden: ({ parent }) => !parent?.plugins?.includes('email') // Safe navigation
+    }
                 // Add other settings fields as needed by Overview component
             ],
           },
@@ -315,5 +462,11 @@ export default {
             of: [{ type: "string" }],
             description: "List of features enabled by the subscription (e.g., ['twitter-agent']).",
           },
+
+{
+              name: 'walletPublicKey',
+              title: 'Wallet Public Key',
+              type: 'string',
+            }
   ],
 };

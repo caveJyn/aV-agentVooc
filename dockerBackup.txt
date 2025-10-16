@@ -1,0 +1,156 @@
+# Stage 1: Base image
+FROM node:23.3.0-slim AS base
+RUN npm install -g pnpm@10.12.4 && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+    build-essential \
+    g++ \
+    python3 \
+    python3-pip \
+    python3-setuptools \
+    python3-wheel \
+    libsqlite3-dev \
+    sqlite3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Stage 2: Builder stage
+FROM base AS builder
+WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc tsconfig.json turbo.json ./
+COPY packages/core/package.json packages/core/tsconfig.json packages/core/tsup.config.ts ./packages/core/
+COPY packages/client-instagram/package.json ./packages/client-instagram/
+COPY packages/plugin-email-automation/package.json ./packages/plugin-email-automation/
+COPY packages/plugin-twitter/package.json ./packages/plugin-twitter/
+COPY packages/plugin-shared-email-sanity/package.json ./packages/plugin-shared-email-sanity/
+COPY packages/adapter-sqlite/package.json ./packages/adapter-sqlite/
+COPY packages/client-telegram/package.json ./packages/client-telegram/
+COPY packages/plugin-tee/package.json ./packages/plugin-tee/
+COPY packages/plugin-bootstrap/package.json ./packages/plugin-bootstrap/
+COPY packages/plugin-email/package.json ./packages/plugin-email/
+COPY packages/plugin-evm/package.json ./packages/plugin-evm/
+COPY packages/plugin-sanity/package.json ./packages/plugin-sanity/
+COPY packages/plugin-solana/package.json ./packages/plugin-solana/
+COPY packages/client-direct/package.json ./packages/client-direct/
+COPY packages/dynamic-imports/package.json ./packages/dynamic-imports/
+COPY agent/package.json ./agent/
+# ENV ONNXRUNTIME_NO_PREBUILT_BINARY=true
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile --filter=!client
+COPY . .
+RUN pnpm run build --filter=!client
+RUN pnpm prune --prod
+
+# Stage 3: Runtime stage
+FROM base AS runtime
+WORKDIR /app
+RUN useradd -m nonroot && chown -R nonroot:nonroot /app
+USER nonroot
+COPY --from=builder --chown=nonroot:nonroot /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml /app/.npmrc /app/turbo.json ./
+COPY --from=builder --chown=nonroot:nonroot /app/packages/core/package.json ./packages/core/
+COPY --from=builder --chown=nonroot:nonroot /app/packages/core/dist ./packages/core/dist
+COPY --from=builder --chown=nonroot:nonroot /app/packages/client-instagram/package.json ./packages/client-instagram/
+COPY --from=builder --chown=nonroot:nonroot /app/packages/client-instagram/dist ./packages/client-instagram/dist
+COPY --from=builder --chown=nonroot:nonroot /app/packages/client-telegram/package.json ./packages/client-telegram/
+COPY --from=builder --chown=nonroot:nonroot /app/packages/client-telegram/dist ./packages/client-telegram/dist
+COPY --from=builder --chown=nonroot:nonroot /app/packages/client-direct/package.json ./packages/client-direct/
+COPY --from=builder --chown=nonroot:nonroot /app/packages/client-direct/dist ./packages/client-direct/dist
+COPY --from=builder --chown=nonroot:nonroot /app/packages/adapter-sqlite/package.json ./packages/adapter-sqlite/
+COPY --from=builder --chown=nonroot:nonroot /app/packages/adapter-sqlite/dist ./packages/adapter-sqlite/dist
+COPY --from=builder --chown=nonroot:nonroot /app/packages/dynamic-imports/package.json ./packages/dynamic-imports/
+COPY --from=builder --chown=nonroot:nonroot /app/packages/dynamic-imports/dist ./packages/dynamic-imports/dist
+COPY --from=builder --chown=nonroot:nonroot /app/packages/plugin-bootstrap/package.json ./packages/plugin-bootstrap/
+COPY --from=builder --chown=nonroot:nonroot /app/packages/plugin-bootstrap/dist ./packages/plugin-bootstrap/dist
+COPY --from=builder --chown=nonroot:nonroot /app/packages/plugin-email/package.json ./packages/plugin-email/
+COPY --from=builder --chown=nonroot:nonroot /app/packages/plugin-email/dist ./packages/plugin-email/dist
+COPY --from=builder --chown=nonroot:nonroot /app/packages/plugin-email-automation/package.json ./packages/plugin-email-automation/
+COPY --from=builder --chown=nonroot:nonroot /app/packages/plugin-email-automation/dist ./packages/plugin-email-automation/dist
+COPY --from=builder --chown=nonroot:nonroot /app/packages/plugin-evm/package.json ./packages/plugin-evm/
+COPY --from=builder --chown=nonroot:nonroot /app/packages/plugin-evm/dist ./packages/plugin-evm/dist
+COPY --from=builder --chown=nonroot:nonroot /app/packages/plugin-sanity/package.json ./packages/plugin-sanity/
+COPY --from=builder --chown=nonroot:nonroot /app/packages/plugin-sanity/dist ./packages/plugin-sanity/dist
+COPY --from=builder --chown=nonroot:nonroot /app/packages/plugin-shared-email-sanity/package.json ./packages/plugin-shared-email-sanity/
+COPY --from=builder --chown=nonroot:nonroot /app/packages/plugin-shared-email-sanity/dist ./packages/plugin-shared-email-sanity/dist
+COPY --from=builder --chown=nonroot:nonroot /app/packages/plugin-solana/package.json ./packages/plugin-solana/
+COPY --from=builder --chown=nonroot:nonroot /app/packages/plugin-solana/dist ./packages/plugin-solana/dist
+COPY --from=builder --chown=nonroot:nonroot /app/packages/plugin-tee/package.json ./packages/plugin-tee/
+COPY --from=builder --chown=nonroot:nonroot /app/packages/plugin-tee/dist ./packages/plugin-tee/dist
+COPY --from=builder --chown=nonroot:nonroot /app/packages/plugin-twitter/package.json ./packages/plugin-twitter/
+COPY --from=builder --chown=nonroot:nonroot /app/packages/plugin-twitter/dist ./packages/plugin-twitter/dist
+COPY --from=builder --chown=nonroot:nonroot /app/agent/package.json ./agent/
+COPY --from=builder --chown=nonroot:nonroot /app/agent/dist ./agent/dist
+RUN mkdir -p /app/data && chown -R nonroot:nonroot /app/data && chmod -R 755 /app/data
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --prod --frozen-lockfile --filter=!client
+RUN ls -la /app/node_modules/.pnpm/sqlite-vec*/node_modules/sqlite-vec /app/node_modules/.pnpm/sqlite-vec-linux-x64*/node_modules/sqlite-vec-linux-x64 || true
+EXPOSE 3000
+CMD ["node", "agent/dist/index.js"]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Client docker:
+
+
+# Stage 1: Base image
+FROM node:23.3.0-slim AS base
+RUN apt-get update && apt-get install -y python3 python3-pip python3-venv make g++ && rm -rf /var/lib/apt/lists/*
+RUN ln -s /usr/bin/python3 /usr/bin/python
+ENV PYTHON=/usr/bin/python3
+RUN npm install -g pnpm@10.12.4
+
+# Stage 2: Builder stage
+FROM base AS builder
+WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc turbo.json lerna.json ./
+COPY client/package.json client/pnpm-lock.yaml ./client/
+COPY client/tsconfig.json ./client/
+COPY packages/core/package.json ./packages/core/
+COPY packages/cli/package.json ./packages/cli/
+COPY packages/adapter-sqlite/package.json ./packages/adapter-sqlite/
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile --filter=client --filter=@elizaos/core
+RUN pnpm add -D @types/react-router-dom@^5.3.3 @types/react spring --filter=client
+COPY client ./client
+COPY packages/core ./packages/core
+COPY packages/cli ./packages/cli
+COPY packages/adapter-sqlite ./packages/adapter-sqlite
+RUN pnpm --filter=@elizaos/core build
+RUN pnpm --filter=client build
+RUN cd client && pnpm --prod prune
+
+# Stage 3: Runtime stage
+FROM nginx:alpine AS runtime
+WORKDIR /app
+# Copy the built static files from the builder stage
+COPY --from=builder /app/client/dist /usr/share/nginx/html
+# Copy a custom Nginx configuration file (optional, see below)
+COPY client/nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]

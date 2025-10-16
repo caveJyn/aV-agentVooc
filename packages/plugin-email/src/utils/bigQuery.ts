@@ -3,18 +3,18 @@ import { BigQuery } from '@google-cloud/bigquery';
 import { Storage } from '@google-cloud/storage';
 import { elizaLogger, stringToUuid } from '@elizaos/core';
 import type { ExtendedEmailContent } from '../types/email';
+import { fetchCharacterById, constructCharacterPrompt } from '@elizaos-plugins/plugin-shared-email-sanity';
 import {DocumentProcessorServiceClient} from '@google-cloud/documentai';
 
 const bigquery = new BigQuery();
 const storage = new Storage();
 const documentAiClient = new DocumentProcessorServiceClient();
-const datasetId = process.env.BIGQUERY_DATASET_ID || 'agentvooc_dataset';
-const emailsTableId = process.env.BIGQUERY_EMAILS_TABLE || 'emails';
-const repliesTableId = process.env.BIGQUERY_REPLIES_TABLE || 'email_replies';
-const bucketName = process.env.GCS_BUCKET_NAME || 'agentvooc_email_storage';
-const modelEndpoint = process.env.BIGQUERY_MODEL_ENDPOINT || 'bigquery-agentvooc-elizaos.agentvooc_dataset.lk';
-const multimodalModelEndpoint = 'bigquery-agentvooc-elizaos.agentvooc_dataset.lk'; // Use gemini-2.5-pro for multimodal
-const documentAiProcessor = process.env.DOCUMENT_AI_PROCESSOR_ID || 'projects/689975226236/locations/us/processors/b460db91de542ef9';
+const datasetId = process.env.BIGQUERY_DATASET_ID
+const emailsTableId = process.env.BIGQUERY_EMAILS_TABLE;
+const repliesTableId = process.env.BIGQUERY_REPLIES_TABLE;
+const bucketName = process.env.GCS_BUCKET_NAME;
+const modelEndpoint = process.env.BIGQUERY_MODEL_ENDPOINT;
+const documentAiProcessor = process.env.DOCUMENT_AI_PROCESSOR_ID;
 
 // Create or replace emails table
 export async function createEmailsTable() {
@@ -231,6 +231,15 @@ export async function initializeBigQuery() {
   }
 }
 
+
+// Retry configuration for GCS verification
+const GCS_RETRY_CONFIG = {
+  maxRetries: 5,
+  initialDelayMs: 1000,
+  maxDelayMs: 5000,
+  backoffFactor: 2,
+};
+
 // Store email to BigQuery + GCS
 export async function storeEmailToBigQuery(mail: ExtendedEmailContent & { attachmentContent?: string[] }, userId: string) {
   try {
@@ -238,7 +247,7 @@ export async function storeEmailToBigQuery(mail: ExtendedEmailContent & { attach
 
     // ===== Body =====
     const baseId = encodeURIComponent(mail.messageId || mail.emailUUID || `email-${Date.now()}`);
-    const bodyFilePath = `body/${baseId}_body.txt`; // Flattened path: body/<baseId>_body.txt
+    const bodyFilePath = `body/${baseId}_body.txt`;
     const gcsBodyUri = `gs://${bucketName}/${bodyFilePath}`;
     const bodyContent = mail.text || 'No content';
 
@@ -279,15 +288,45 @@ export async function storeEmailToBigQuery(mail: ExtendedEmailContent & { attach
             metadata: { cacheControl: 'no-cache' },
           });
 
+          // Wait for GCS object to be fully propagated
+          const file = storage.bucket(bucketName).file(attachmentPath);
+          let retries = GCS_RETRY_CONFIG.maxRetries;
+          let delay = GCS_RETRY_CONFIG.initialDelayMs;
+          let exists = false;
+          while (retries > 0 && !exists) {
+            [exists] = await file.exists();
+            if (!exists) {
+              elizaLogger.debug(`[BIGQUERY] Waiting for GCS object propagation`, {
+                attachmentRef,
+                retriesLeft: retries,
+                delayMs: delay,
+              });
+              await new Promise(resolve => setTimeout(resolve, delay));
+              retries--;
+              delay = Math.min(delay * GCS_RETRY_CONFIG.backoffFactor, GCS_RETRY_CONFIG.maxDelayMs);
+            }
+          }
+
+          if (!exists) {
+            elizaLogger.warn(`[BIGQUERY] GCS object not found after retries`, {
+              attachmentRef,
+              gcsAttachmentUri,
+            });
+            continue;
+          }
+
           gcsAttachmentUris.push(gcsAttachmentUri);
-          elizaLogger.info(`[BIGQUERY] Stored attachment in flattened GCS`, {
+          elizaLogger.info(`[BIGQUERY] Stored and verified attachment in GCS`, {
             fileName: safeFileName,
             gcsUri: gcsAttachmentUri,
             size: buffer.length,
             attachmentRef,
           });
         } catch (err: any) {
-          elizaLogger.warn(`[BIGQUERY] Failed to store attachment`, { error: err.message });
+          elizaLogger.warn(`[BIGQUERY] Failed to store attachment`, {
+            error: err.message,
+            attachmentIndex: i,
+          });
         }
       }
     }
@@ -330,7 +369,6 @@ export async function storeEmailToBigQuery(mail: ExtendedEmailContent & { attach
     throw err;
   }
 }
-
 // Fetch email body from GCS
 export async function getEmailBody(gcsUri: string): Promise<string> {
   try {
@@ -346,8 +384,15 @@ export async function getEmailBody(gcsUri: string): Promise<string> {
 }
 
 // Generate reply using ML.GENERATE_TEXT with character context
-export async function generateReplyWithBigQuery(emailId: string, promptContext: string) {
+export async function generateReplyWithBigQuery(emailId: string, promptContext: string, agentId: string) {
   try {
+    // Fetch character data from shared utility
+    const character = await fetchCharacterById(agentId);
+    if (!character) {
+      elizaLogger.warn(`[BIGQUERY] Character not found for agentId: ${agentId}`);
+      throw new Error(`Character not found for agentId: ${agentId}`);
+    }
+
     // Fetch attachment content for the email
     const attachmentQuery = `
       SELECT extracted_content
@@ -363,22 +408,23 @@ export async function generateReplyWithBigQuery(emailId: string, promptContext: 
       attachmentContent: attachmentContent.substring(0, 100) + (attachmentContent.length > 100 ? '...' : ''),
     });
 
-    // Use a generic prompt instead of character-specific prompt
-    const genericPrompt = `
-      You are a helpful email assistant. Generate a professional and concise reply to the following email:
-      Prompt: ${promptContext}
-      Attachment Content: ${attachmentContent}
-      Please ensure the reply is polite, relevant to the email content, and formatted appropriately for an email response.
-    `;
+    // Construct character-specific prompt using shared utility
+    let characterPrompt: string = constructCharacterPrompt(character, promptContext + '\nAttachment Content:\n' + attachmentContent);
 
     // Estimate input tokens (~4 chars per token)
-    const estimatedInputTokens = Math.ceil(genericPrompt.length / 4);
+    const estimatedInputTokens = Math.ceil(characterPrompt.length / 4);
     elizaLogger.info(`[BIGQUERY] Estimated input tokens: ${estimatedInputTokens}`);
 
     // Define token limits for gemini-2.5-pro
     const maxOutputTokens = 4096;
     const maxInputTokens = 32768 - maxOutputTokens;
 
+    // Truncate prompt if too long
+    if (estimatedInputTokens > maxInputTokens) {
+      const maxPromptLength = maxInputTokens * 4;
+      characterPrompt = characterPrompt.substring(0, maxPromptLength - 50) + '\n[Prompt truncated]';
+      elizaLogger.warn(`[BIGQUERY] Prompt truncated to ${maxPromptLength} chars to fit token limit`);
+    }
 
     const query = `
       SELECT 
@@ -386,7 +432,7 @@ export async function generateReplyWithBigQuery(emailId: string, promptContext: 
         'Re: ' || subject AS reply_subject,
         ml_generate_text_status AS generation_status
       FROM ML.GENERATE_TEXT(
-        MODEL \`${multimodalModelEndpoint}\`,
+        MODEL \`${modelEndpoint}\`,
         (
           SELECT @prompt AS prompt, @emailId AS original_email_id, subject
           FROM \`${datasetId}.${emailsTableId}\`
@@ -404,7 +450,7 @@ export async function generateReplyWithBigQuery(emailId: string, promptContext: 
 
     const options = {
       query,
-      params: { prompt: genericPrompt, emailId },
+      params: { prompt: characterPrompt, emailId },
       timeoutMs: 300000,
       location: 'US',
     };
@@ -612,19 +658,57 @@ export async function processEmailAttachment(emailId: string, attachmentRef: str
 
   const expectedUri = `gs://${bucketName}/${attachmentRef}`;
 
-  // Function to verify GCS object
+  // Function to verify GCS object with retries
   async function verifyGcsObject(filePath: string): Promise<boolean> {
     const file = storage.bucket(bucketName).file(filePath);
-    const [exists] = await file.exists();
-    if (!exists) return false;
-    const [metadata] = await file.getMetadata();
-    return metadata.timeCreated && new Date(metadata.timeCreated) <= new Date();
+    let retries = GCS_RETRY_CONFIG.maxRetries;
+    let delay = GCS_RETRY_CONFIG.initialDelayMs;
+
+    while (retries > 0) {
+      try {
+        const [exists] = await file.exists();
+        if (exists) {
+          const [metadata] = await file.getMetadata();
+          if (metadata.timeCreated && new Date(metadata.timeCreated) <= new Date()) {
+            elizaLogger.debug(`[BIGQUERY] GCS object verified`, {
+              filePath,
+              size: Number(metadata.size),
+              contentType: metadata.contentType,
+            });
+            return true;
+          }
+        }
+        elizaLogger.debug(`[BIGQUERY] GCS object not found, retrying`, {
+          filePath,
+          retriesLeft: retries,
+          delayMs: delay,
+        });
+        await new Promise(resolve => setTimeout(resolve, delay));
+        retries--;
+        delay = Math.min(delay * GCS_RETRY_CONFIG.backoffFactor, GCS_RETRY_CONFIG.maxDelayMs);
+      } catch (error: any) {
+        elizaLogger.warn(`[BIGQUERY] Error during GCS verification`, {
+          filePath,
+          error: error.message,
+          retriesLeft: retries,
+        });
+        if (retries === 0) throw error;
+        await new Promise(resolve => setTimeout(resolve, delay));
+        delay = Math.min(delay * GCS_RETRY_CONFIG.backoffFactor, GCS_RETRY_CONFIG.maxDelayMs);
+        retries--;
+      }
+    }
+    elizaLogger.warn(`[BIGQUERY] GCS object not found after retries`, {
+      filePath,
+      expectedUri,
+    });
+    return false;
   }
 
   try {
     // Verify GCS object
     if (!(await verifyGcsObject(attachmentRef))) {
-      elizaLogger.warn(`[BIGQUERY] GCS object not found`, { emailId, attachmentRef, expectedUri });
+      elizaLogger.warn(`[BIGQUERY] GCS object not found after retries`, { emailId, attachmentRef, expectedUri });
       return 'Attachment not found in storage';
     }
 

@@ -1,6 +1,13 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { NavLink } from "react-router-dom"; // For navigation to subscription page
+import { NavLink } from "react-router-dom";
+
+interface ImageVariants {
+  main: string;
+  thumbnail: string;
+  medium: string;
+  raw?: string;
+}
 
 interface HeroSection {
   title: string;
@@ -8,7 +15,8 @@ interface HeroSection {
   primaryCtaText: string;
   secondaryCtaText?: string;
   trustSignal?: string;
-  backgroundImage?: string;
+  backgroundImage?: ImageVariants;
+  mascotModel?: { asset: { _id: string; url: string } };
 }
 
 interface HeroProps {
@@ -34,54 +42,86 @@ export const Hero = ({ heroSection }: HeroProps) => {
   const [starPositions, setStarPositions] = useState<StarPosition[]>([]);
 
   useEffect(() => {
-    const positions = [...Array(20)].map(() => ({
-      top: `${Math.random() * 100}%`,
-      left: `${Math.random() * 100}%`,
-      width: `${Math.random() * 4 + 2}px`,
-      height: `${Math.random() * 4 + 2}px`,
-      animationDelay: `${Math.random() * 5}s`,
-      animationDuration: `${Math.random() * 3 + 2}s`,
-    }));
+    const positions = [...Array(600)].map(() => {
+      const angle = Math.random() * 2 * Math.PI;
+      const a = window.innerWidth * 2.8 * 0.5;
+      const b = window.innerHeight * 2.8 * 0.5;
+      const radiusScale = Math.random() * 0.8 + 0.4;
+      const x = a * Math.cos(angle) * radiusScale;
+      const y = b * Math.sin(angle) * radiusScale;
+      const galaxyCenterX = window.innerWidth * 2.8 * 0.5;
+      const galaxyCenterY = window.innerHeight * 2.8 * 0.5;
+      const containerWidth = window.innerWidth * 2.8;
+      const containerHeight = window.innerHeight * 2.8;
+      const left = ((galaxyCenterX + x) / containerWidth) * 100;
+      const top = ((galaxyCenterY + y) / containerHeight) * 100;
+
+      return {
+        top: `${top}%`,
+        left: `${left}%`,
+        width: `${Math.random() * 4 + 2}px`,
+        height: `${Math.random() * 4 + 2}px`,
+        animationDelay: `${Math.random() * 4}s`,
+        animationDuration: `${Math.random() * 5 + 3}s`,
+      };
+    });
     setStarPositions(positions);
   }, []);
 
+  // Define the three images in the specified order
+  const images = [
+    "/sbmain.png",
+    "/chatin.png",
+    "/sbdoc.png",
+  ];
+
   return (
-    <section className="min-h-screen flex items-center justify-center relative overflow-hidden">
-      {/* Background Gradient */}
-      <div className="absolute inset-0 bg-gradient-to-br from-agentvooc-primary-bg via-agentvooc-primary-bg-dark to-agentvooc-secondary-accent">
+    <section className="min-h-screen flex items-center justify-center relative overflow-hidden bg-cover bg-center bg-no-repeat hero-container">
+      {/* Background Gradient and Overlay */}
+      <div
+        className="absolute inset-0 bg-gradient-to-br from-agentvooc-secondary-bg via-agentvooc-primary-bg to-agentvooc-secondary-accent"
+      >
         <div className="absolute inset-0 bg-black/60" />
       </div>
-  {/* ✅ Moved this here: Pulse top-right */}
-  <div className="absolute -top-40 -right-32 opacity-5 pointer-events-none z-0">
-    <div className="w-96 h-96 bg-agentvooc-accent rounded-full blur-3xl animate-pulse" />
-  </div>
-      {/* Particle Effect (Stars) */}
-      <div className="absolute inset-0 pointer-events-none">
-        {starPositions.map((position, index) => (
+
+      {/* Galaxy Container for Stars and Pulses */}
+      <div className="galaxy-container">
+        <div className="absolute top-25% left-25% pointer-events-none z-0">
           <div
-            key={index}
-            className="absolute bg-agentvooc-stars rounded-full animate-star-sequence"
-            style={{
-              width: position.width,
-              height: position.height,
-              top: position.top,
-              left: position.left,
-              animationDelay: position.animationDelay,
-              animationDuration: position.animationDuration,
-            }}
+            className="w-96 h-96 bg-agentvooc-accent rounded-full pulse"
+            style={{ animationDelay: "0s" }}
           />
-        ))}
+          <div
+            className="w-80 h-80 bg-agentvooc-accent rounded-full pulse pulse-secondary"
+            style={{ animationDelay: "-2s" }}
+          />
+        </div>
+        <div className="absolute inset-0 pointer-events-none">
+          {starPositions.map((position, index) => (
+            <div
+              key={index}
+              className="star"
+              style={{
+                width: position.width,
+                height: position.height,
+                top: position.top,
+                left: position.left,
+                animationDelay: position.animationDelay,
+                animationDuration: position.animationDuration,
+              }}
+            />
+          ))}
+        </div>
       </div>
 
       {/* Content */}
-      <div className="relative z-10 w-full max-w-7xl px-4 flex flex-col md:flex-row items-center">
-        {/* Left Half: Text, CTAs, Trust Signals, Pricing Teaser */}
-        <div className="md:w-1/2 text-center md:text-left">
+      <div className="relative z-10 w-[1600px] px-4 sm:px-6 lg:px-8 flex flex-col items-center lg:flex-row lg:items-center">
+        <div className="lg:w-1/2 text-center lg:text-left lg:pr-8 mb-8 lg:mb-0">
           <h1
-            className="text-4xl md:text-6xl lg:text-7xl font-bold mb-4 animate-fade-in"
+            className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-4 animate-fade-in"
             style={{
               background:
-                "linear-gradient(to right, #ffffff, hsl(var(--agentvooc-accent)))",
+                "linear-gradient(to right, hsl(var(--agentvooc-text-hero-title)), hsl(var(--agentvooc-accent)))",
               WebkitBackgroundClip: "text",
               WebkitTextFillColor: "transparent",
               animationDelay: "0.0s",
@@ -89,63 +129,64 @@ export const Hero = ({ heroSection }: HeroProps) => {
               paddingBottom: "0.2em",
             }}
           >
-            {title}
+            {title}<span>.</span>
           </h1>
-          <p
-            className="text-lg md:text-xl lg:text-2xl max-w-2xl text-agentvooc-secondary mb-8 animate-fade-in"
-            style={{ animationDelay: "0.2s" }}
+          <h2
+            className="sm:text-sm md:text-lg lg:text-2xl max-w-xl mx-auto lg:mx-0 mb-6 animate-fade-in"
+            style={{
+              background:
+                "linear-gradient(to right, hsl(var(--agentvooc-text-hero-title)), hsl(var(--agentvooc-accent)))",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+              animationDelay: "0.0s",
+              lineHeight: "1.1",
+              paddingBottom: "0.2em",
+            }}
           >
             {subtitle}
-          </p>
-
-          {/* Primary CTA */}
-          <NavLink to="/subscriptions">
+          </h2>
+          <NavLink to="https://agentvooc.com/demo">
             <Button
-              className="bg-agentvooc-button-bg text-agentvooc-accent hover:bg-agentvooc-accent hover:text-agentvooc-primary-bg animate-glow-pulse text-xl px-8 py-4 rounded-full transition-all transform hover:scale-105 animate-fade-in"
+              variant="default"
+              size="lg"
+              className="animate-glow-pulse"
               style={{ animationDelay: "0.4s" }}
             >
               {primaryCtaText}
             </Button>
           </NavLink>
-
-          {/* Trust Signals and Metrics */}
           <div
-            className="mt-12 flex flex-wrap justify-center md:justify-start gap-8 animate-fade-in"
+            className="mt-8 flex flex-wrap justify-center lg:justify-start gap-6 sm:gap-8 animate-fade-in"
             style={{ animationDelay: "0.6s" }}
           >
-            <div className="flex items-center gap-2">
-              <span className="text-agentvooc-accent text-sm md:text-base">
-                50K+ Users
-              </span>
-              <div className="flex -space-x-2">
-                {[...Array(3)].map((_, i) => (
-                  <div
-                    key={i}
-                    className="w-8 h-8 bg-agentvooc-secondary-accent rounded-full border-2 border-agentvooc-primary-bg"
-                  />
-                ))}
-              </div>
+            <div className="text-agentvooc-accent text-sm sm:text-base">
+              <span className="font-bold text-lg">agentVooc</span> | ElizaOS
             </div>
-            <div className="text-agentvooc-accent text-sm md:text-base">
-              <span className="font-bold text-lg">3x</span> Faster Processing
-            </div>
-            <div className="text-agentvooc-accent text-sm md:text-base">
-              <span className="font-bold text-lg">99.9%</span> Uptime
+            <div className="text-agentvooc-accent text-sm sm:text-base">
+              <span>Open-source</span> | <span className="font-bold text-lg">Framework</span>
             </div>
           </div>
-
-          {/* Pricing Teaser (Inspired by Subscriptions Component) */}
-          
         </div>
 
-        {/* Right Half: Placeholder for Image or 3D GLB File */}
-        <div className="md:w-1/2 flex items-center justify-center">
-          <div className="w-full h-96 bg-agentvooc-secondary-accent/20 rounded-lg flex items-center justify-center">
-            <p className="text-agentvooc-secondary text-lg">
-              [Placeholder for Image or 3D GLB File]
-            </p>
-          </div>
-        </div>
+        {/* Right Side: Three Images in a Row */}
+        <div className="lg:w-1/2 flex justify-center lg:justify-end">
+  <div className="flex flex-row items-center gap-2 sm:gap-1">
+    {images.map((src, index) => (
+      <div
+        key={index}
+        className="relative rounded-lg overflow-hidden shadow-lg transition-transform transform hover:scale-105 hover:shadow-2xl hover:z-10"
+      >
+        <img
+          src={src}
+          alt={`Hero image ${index + 1}`}
+          className="w-full h-auto object-contain"
+          loading="lazy"
+        />
+        <div className="absolute inset-0 bg-black/10 hover:bg-black/5" />
+      </div>
+    ))}
+  </div>
+</div>
       </div>
     </section>
   );

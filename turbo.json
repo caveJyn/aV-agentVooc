@@ -1,39 +1,58 @@
 {
-    "$schema": "https://turbo.build/schema.json",
-    "tasks": {
-      "check-types": {
-        "dependsOn": ["build"]
-      },
-      "@elizaos/agent#check-types": {
-        "dependsOn": [
-          "@elizaos/plugin-solana#build",
-          "@elizaos/plugin-direct#build",
-          "@elizaos-plugins/plugin-sanity#build"
-        ]
-      },
-      "build": {
-        "outputs": ["dist/**"],
-        "dependsOn": ["^build"] 
-      },
-      "@elizaos/client#build": {
-        "outputs": ["dist/**"],
-        "dependsOn": [
-          "@elizaos-plugins/plugin-sanity#build",
-          "@elizaos/core#build"
-        ]
-      },
-      "@elizaos/client-direct#build": {
-        "outputs": ["dist/**"],
-        "dependsOn": [
-          "@elizaos-plugins/plugin-sanity#build"
-        ]
-      },
-      "eliza-docs#build": {
-        "outputs": ["build/**"]
-      },
-      "dev": {
-        "persistent": true,
-        "cache": true
-      }
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "check-types": {
+      "dependsOn": ["build"]
+    },
+    "@elizaos/agent#check-types": {
+      "dependsOn": [
+        "@elizaos/plugin-direct#build",
+        "@elizaos-plugins/plugin-sanity#build",
+        "@elizaos-plugins/client-instagram#build",
+        "@elizaos-plugins/plugin-email#build"
+      ]
+    },
+    "build": {
+      "outputs": ["dist/**"],
+      "dependsOn": ["^build"]
+    },
+    "@elizaos/agent#build": {
+      "outputs": ["dist/**"],
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos-plugins/client-telegram#build",
+        "@elizaos-plugins/plugin-tee#build",
+        "@elizaos/client-direct#build",
+        "@elizaos/plugin-bootstrap#build",
+        "@elizaos-plugins/plugin-sanity#build",
+        "@elizaos-plugins/plugin-twitter#build",
+        "@elizaos-plugins/client-instagram#build",
+        "@elizaos-plugins/plugin-email#build",
+        "@elizaos-plugins/plugin-shared-email-sanity#build"
+      ]
+    },
+    "@elizaos/client#build": {
+      "outputs": ["dist/**"],
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos-plugins/plugin-sanity#build",
+        "@elizaos-plugins/plugin-zkproof#build",
+        "@elizaos-plugins/plugin-chipi#build",
+        "@elizaos-plugins/plugin-chipi-client#build"
+      ]
+    },
+    "@elizaos/client-direct#build": {
+      "outputs": ["dist/**"],
+      "dependsOn": [
+        "@elizaos-plugins/plugin-sanity#build",
+        "@elizaos-plugins/plugin-email#build",
+        "@elizaos-plugins/plugin-chipi#build",
+        "@elizaos-plugins/plugin-zkproof#build"
+      ]
+    },
+    "dev": {
+      "persistent": true,
+      "cache": true
     }
   }
+}

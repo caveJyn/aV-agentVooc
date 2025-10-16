@@ -15,7 +15,7 @@ const ChatMessageList = React.forwardRef<HTMLDivElement, ChatMessageListProps>(
         return (
             <div className="relative w-full h-full">
                 <div
-                    className={`flex flex-col w-full h-full p-4 overflow-y-auto bg-[hsl(var(--agentvooc-primary-bg))] ${className}`}
+                    className={`flex flex-col w-full h-full p-4 overflow-y-auto bg-[hsl(var(--agentvooc-secondary-bg))] ${className}`}
                     ref={scrollRef}
                     onWheel={disableAutoScroll}
                     onTouchMove={disableAutoScroll}
@@ -31,7 +31,7 @@ const ChatMessageList = React.forwardRef<HTMLDivElement, ChatMessageListProps>(
                         }}
                         size="icon"
                         variant="outline"
-                        className="absolute bottom-2 left-1/2 transform -translate-x-1/2 inline-flex rounded-full shadow-agentvooc-glow border-[hsl(var(--agentvooc-accent))/30] text-[hsl(var(--agentvooc-accent))] hover:bg-[hsl(var(--agentvooc-accent))] hover:text-[hsl(var(--agentvooc-primary-bg))]"
+                        className="absolute bottom-2 left-1/2 transform -translate-x-1/2 inline-flex rounded-full shadow-agentvooc-glow border-[hsl(var(--agentvooc-accent))/30] text-[hsl(var(--agentvooc-accent))] hover:bg-[hsl(var(--agentvooc-accent))] hover:text-[hsl(var(--agentvooc-secondary-bg))]"
                     >
                         <ArrowDown className="h-4 w-4" />
                     </Button>

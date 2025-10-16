@@ -6,11 +6,13 @@ import type {
     IDatabaseCacheAdapter,
     UUID,
 } from "./types";
+import elizaLogger from "./logger";
 
 export interface ICacheAdapter {
     get(key: string): Promise<string | undefined>;
     set(key: string, value: string): Promise<void>;
     delete(key: string): Promise<void>;
+    clearAgentCache?(agentId: UUID): Promise<void>;
 }
 
 export class MemoryCacheAdapter implements ICacheAdapter {
@@ -30,6 +32,15 @@ export class MemoryCacheAdapter implements ICacheAdapter {
 
     async delete(key: string): Promise<void> {
         this.data.delete(key);
+    }
+    
+    async clearAgentCache(agentId: UUID): Promise<void> {
+        for (const key of this.data.keys()) {
+            if (key.startsWith(`${agentId}_`)) {
+                this.data.delete(key);
+            }
+        }
+        elizaLogger.debug(`[Cache] Cleared all cache entries for agent ${agentId}`);
     }
 }
 
@@ -64,6 +75,20 @@ export class FsCacheAdapter implements ICacheAdapter {
             // console.error(error);
         }
     }
+
+     async clearAgentCache(agentId: UUID): Promise<void> {
+        try {
+            const files = await fs.readdir(this.dataDir);
+            for (const file of files) {
+                if (file.startsWith(`${agentId}_`)) {
+                    await fs.unlink(path.join(this.dataDir, file));
+                }
+            }
+            elizaLogger.debug(`[Cache] Cleared all cache entries for agent ${agentId}`);
+        } catch (error) {
+            elizaLogger.error(`Error clearing cache for agent ${agentId}:`, error);
+        }
+    }
 }
 
 export class DbCacheAdapter implements ICacheAdapter {
@@ -82,6 +107,11 @@ export class DbCacheAdapter implements ICacheAdapter {
 
     async delete(key: string): Promise<void> {
         await this.db.deleteCache({ agentId: this.agentId, key });
+    }
+
+    async clearAgentCache(agentId: UUID): Promise<void> {
+        await this.db.clearAgentCache(agentId);
+        elizaLogger.debug(`[Cache] Cleared all cache entries for agent ${agentId}`);
     }
 }
 
@@ -122,5 +152,9 @@ export class CacheManager<CacheAdapter extends ICacheAdapter = ICacheAdapter>
 
     async delete(key: string): Promise<void> {
         return this.adapter.delete(key);
+    }
+
+     async clearAgentCache(agentId: UUID): Promise<void> {
+        await this.adapter.clearAgentCache(agentId);
     }
 }

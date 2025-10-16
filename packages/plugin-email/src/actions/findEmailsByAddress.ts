@@ -1,7 +1,7 @@
 import type { Action, ActionExample, HandlerCallback, IAgentRuntime, Memory, State, Content, UUID } from "@elizaos/core";
 import { elizaLogger, stringToUuid } from "@elizaos/core";
 import { BigQuery } from "@google-cloud/bigquery";
-import { getEmailBody } from "../utils/gcsUtils";
+import { getEmailBody } from "../utils/bigQuery";
 
 const bigquery = new BigQuery();
 const datasetId = process.env.BIGQUERY_DATASET_ID || 'agentvooc_dataset';
@@ -30,7 +30,7 @@ export const findEmailsByAddressAction: Action = {
        text.includes("emails from")) &&
       emailRegex.test(text)
     ) || isListingIds;
-    elizaLogger.info("[EMAIL-PLUGIN] Validating FIND_EMAILS_BY_ADDRESS action", { text, isValid });
+    elizaLogger.debug("[EMAIL-PLUGIN] Validating FIND_EMAILS_BY_ADDRESS action", { text, isValid });
     return isValid;
   },
 
@@ -41,7 +41,7 @@ export const findEmailsByAddressAction: Action = {
     options?: { ragKnowledge?: string },
     callback?: HandlerCallback
   ): Promise<boolean> => {
-    elizaLogger.info("[EMAIL-PLUGIN] Executing FIND_EMAILS_BY_ADDRESS action", {
+    elizaLogger.debug("[EMAIL-PLUGIN] Executing FIND_EMAILS_BY_ADDRESS action", {
       messageText: message.content.text,
       roomId: runtime.character.id,
     });

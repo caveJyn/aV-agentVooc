@@ -13,7 +13,7 @@ export const models: Models = {
         endpoint: settings.OPENAI_API_URL || "https://api.openai.com/v1",
         model: {
             [ModelClass.SMALL]: {
-                name: settings.SMALL_OPENAI_MODEL || "gpt-4o-mini",
+                name: settings.SMALL_OPENAI_MODEL || "gpt-4o",
                 stop: [],
                 maxInputTokens: 128000,
                 maxOutputTokens: 8192,

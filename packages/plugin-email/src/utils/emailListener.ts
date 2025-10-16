@@ -7,6 +7,9 @@ import { type ExtendedEmailContent } from '../types';
 import { simpleParser } from 'mailparser';
 import { fetchRecentEmails, storeEmailToBigQuery, generateEmailEmbedding, processEmailAttachment, initializeBigQuery, createEmailEmbeddingsVectorIndex } from './bigQuery';
 
+// import { ensureEmailIndex, indexEmailToElastic } from './elastic';
+
+
 const REGULAR_NOTIFICATION_INTERVAL = 60000; // 60 seconds
 
 interface EmailMetadata {
@@ -39,7 +42,7 @@ interface EmailMemory extends Omit<Memory, 'content'> {
 }
 
 export function setupEmailListener(runtime: IAgentRuntime, emailClient: EmailClient) {
-  elizaLogger.debug(`[EmailListener:${runtime.character.id}] Setting up email listener`, { roomId: runtime.character.id });
+  elizaLogger.info(`[EmailListener:${runtime.character.id}] Setting up email listener`, { roomId: runtime.character.id });
 
   const intervals: NodeJS.Timeout[] = [];
 
@@ -103,6 +106,7 @@ export function setupEmailListener(runtime: IAgentRuntime, emailClient: EmailCli
       throw new Error(`Invalid email UUID generated for messageId: ${mail.messageId}`);
     }
 
+
     // Store email to BigQuery and GCS with parsed body and flattened attachments
     try {
       await storeEmailToBigQuery({ ...mail, text: parsedBody, attachments }, runtime.character.id);
@@ -118,6 +122,7 @@ export function setupEmailListener(runtime: IAgentRuntime, emailClient: EmailCli
       });
       return;
     }
+    
 
     // Process each attachment after storing to GCS to extract content
     for (const attachment of attachments) {
@@ -155,6 +160,44 @@ export function setupEmailListener(runtime: IAgentRuntime, emailClient: EmailCli
     });
   }
 
+
+  // Ensure Elastic index exists
+// try {
+//   await ensureEmailIndex();
+// } catch (error: any) {
+//   elizaLogger.error(`[EmailListener:${runtime.character.id}] Failed to ensure Elastic index`, {
+//     error: error.message,
+//     emailUUID,
+//   });
+// }
+
+// // Index email into Elastic
+// try {
+//   // Fetch the embedding vector you just created from BigQuery
+//   const [embedding] = await fetchEmbeddingFromBigQuery(emailUUID);
+
+//   await indexEmailToElastic({
+//     id: emailUUID,
+//     user_id: runtime.character.id,
+//     subject: mail.subject || '',
+//     body: parsedBody,
+//     timestamp: new Date(mail.date || Date.now()).toISOString(),
+//     embedding,
+//   });
+
+//   elizaLogger.info(`[EmailListener:${runtime.character.id}] Indexed email into Elastic`, {
+//     emailUUID,
+//     subject: mail.subject,
+//   });
+// } catch (error: any) {
+//   elizaLogger.error(`[EmailListener:${runtime.character.id}] Failed to index email to Elastic`, {
+//     error: error.message,
+//     emailUUID,
+//   });
+// }
+
+
+
   // Attempt vector index creation
   try {
     const indexCreated = await createEmailEmbeddingsVectorIndex();
@@ -169,6 +212,8 @@ export function setupEmailListener(runtime: IAgentRuntime, emailClient: EmailCli
     });
   }
 
+  
+    
 
     // Check for importance
     const isImportant =
@@ -185,7 +230,7 @@ export function setupEmailListener(runtime: IAgentRuntime, emailClient: EmailCli
         userId: runtime.character.id,
         createdAt: Date.now(),
       };
-      elizaLogger.debug(`[EmailListener:${runtime.character.id}] Triggering important email notification`, {
+      elizaLogger.info(`[EmailListener:${runtime.character.id}] Triggering important email notification`, {
         emailUUID,
         originalEmailId: mail.messageId,
         subject: mail.subject,
@@ -208,7 +253,7 @@ export function setupEmailListener(runtime: IAgentRuntime, emailClient: EmailCli
         userId: runtime.character.id,
         createdAt: Date.now(),
       };
-      elizaLogger.debug(`[EmailListener:${runtime.character.id}] Triggering regular email notification`, {
+      elizaLogger.info(`[EmailListener:${runtime.character.id}] Triggering regular email notification`, {
         count: recentEmails.length,
         roomId: runtime.character.id,
       });
@@ -221,7 +266,7 @@ export function setupEmailListener(runtime: IAgentRuntime, emailClient: EmailCli
     await emailClient.stop();
   });
 
-  elizaLogger.debug(`[EmailListener:${runtime.character.id}] Email listener setup complete`, {
+  elizaLogger.info(`[EmailListener:${runtime.character.id}] Email listener setup complete`, {
     roomId: runtime.character.id,
   });
 }

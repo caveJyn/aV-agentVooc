@@ -1,0 +1,60 @@
+{
+  "name": "@elizaos-plugins/plugin-shared-email-sanity",
+  "version": "1.0.0",
+  "description": "Shared email template utilities for Sanity and Email plugins",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsup --format esm --dts",
+    "dev": "tsup --watch"
+  },
+  "dependencies": {
+    "@sanity/client": "^6.4.9",
+    "@elizaos/core": "workspace:*",
+    "@sanity/vision": "^3.81.0",
+    "sanity": "^3.81.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "supertokens-node": "^22.1.1"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.5",
+    "@types/node": "^22.10.5",
+    "typescript": "5.6.3"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "SANITY_PROJECT_ID": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Sanity project ID is required"
+      },
+      "SANITY_DATASET": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Sanity dataset is required",
+        "default": "production"
+      },
+      "SANITY_API_TOKEN": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Sanity API token is required",
+        "optional": true
+      },
+      "SANITY_API_VERSION": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Sanity API version",
+        "default": "2023-05-03"
+      }
+    }
+  }
+}

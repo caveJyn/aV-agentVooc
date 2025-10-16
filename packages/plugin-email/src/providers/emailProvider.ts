@@ -106,11 +106,6 @@ export const emailProvider: Provider = {
         return "";
       }
 
-      // Trigger email fetch without database check
-      await emailClient.receive((mail: ExtendedEmailContent) => {
-        elizaLogger.debug("[EMAIL-PLUGIN] Received email during provider fetch", { mail });
-      });
-
       const roomId = runtime.character.id;
       const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
       const memories = await runtime.messageManager.getMemories({

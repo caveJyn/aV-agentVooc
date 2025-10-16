@@ -297,7 +297,7 @@ export const replyEmailAction: Action = {
           conversationContext: state?.recentMessagesData?.map(m => m.content.text || "").join("\n") || "",
         });
 
-        body = await generateEmailReply({
+        const generatedReply = await generateEmailReply({
           runtime,
           sender: fromAddress,
           subject,
@@ -306,17 +306,20 @@ export const replyEmailAction: Action = {
           context: ragKnowledgeItems,
         });
 
+        const replySubject = generatedReply.reply_subject;
+        const replyBody = generatedReply.reply_body;
+
         elizaLogger.debug("[EMAIL-PLUGIN] Generated reply with RAG knowledge", {
           emailUUID: emailId,
-          body,
+          replySubject,
+          replyBodyLength: replyBody.length,
           ragKnowledge: formatKnowledgeItems(ragKnowledgeItems),
         });
 
-        const replySubject = subject.toLowerCase().startsWith("re:") ? subject : `Re: ${subject}`;
         const pendingReply: SendEmailOptions = {
           to: fromAddress,
           subject: replySubject,
-          text: body,
+          text: replyBody,
           threadId,
           references: [...references, email.message_id || emailId],
           inReplyTo: email.message_id || emailId,
@@ -326,7 +329,7 @@ export const replyEmailAction: Action = {
         const pendingReplyMemory: Memory = {
           id: pendingReplyId,
           content: {
-            text: `I have generated a reply for:\n\n emailId: ${emailId}:\n\n\n------\n${body}\n------\n\nTo send this reply, please say 'confirm reply' or 'confirm reply emailId: ${emailId}'.\n\nRelevant knowledge:\n${formatKnowledgeItems(ragKnowledgeItems)}`,
+            text: `I have generated a reply for emailId: ${emailId}:\n\nSubject: ${replySubject}\n\n${replyBody}\n\nTo send this reply, please say 'confirm reply' or 'confirm reply emailId: ${emailId}'.\n\nRelevant knowledge:\n${formatKnowledgeItems(ragKnowledgeItems)}`,
             thought: `Generated automated reply for ${emailId} using BigQuery AI`,
             source: "REPLY_EMAIL",
             user: runtime.character.id,
@@ -426,7 +429,128 @@ export const replyEmailAction: Action = {
     }
   },
 
-  examples: [
-    // ... (keep existing examples unchanged)
+ examples: [
+    // Successful reply with message
+    [
+      {
+        user: "{{user1}}",
+        content: {
+          text: "reply to emailId: 123e4567-e89b-12d3-a456-426614174000 message: Thanks for the update, I'll review it today.",
+          action: "REPLY_EMAIL",
+        },
+      },
+      {
+        user: "{{agent}}",
+        content: {
+          text: "✅ Your reply has been sent to john@example.com\n\nOriginal email: Meeting Tomorrow\nYour reply: Thanks for the update, I'll review it today.",
+          action: "REPLY_EMAIL",
+        },
+      },
+    ],
+     // Generate reply only (draft mode)
+    [
+      {
+        user: "{{user1}}",
+        content: {
+          text: "generate a reply for emailId: 987fcdeb-1234-5678-9012-345678901234",
+          action: "REPLY_EMAIL",
+        },
+      },
+      {
+        user: "{{agent}}",
+        content: {
+          text: "I have generated a reply for email UUID 987fcdeb-1234-5678-9012-345678901234:\n\n---\nThank you for your email regarding the project update. I'll review the details and get back to you by end of day.\n---\n\nTo send this reply, please say 'confirm reply' or 'confirm reply emailId: 987fcdeb-1234-5678-9012-345678901234'.",
+          action: "REPLY_EMAIL",
+        },
+      },
+      {
+        user: "{{user1}}",
+        content: {
+          text: "generate a reply for emailId: 987fcdeb-1234-5678-9012-345678901234",
+          action: "REPLY_EMAIL",
+        },
+      },
+      {
+        user: "{{agent}}",
+        content: {
+          text: "I have generated a reply for email UUID 987fcdeb-1234-5678-9012-345678901234:\n\n---\nThank you for your email regarding the project update. I'll review the details and get back to you by end of day.\n---\n\nTo send this reply, please say 'confirm reply' or 'confirm reply emailId: 987fcdeb-1234-5678-9012-345678901234'.",
+          action: "REPLY_EMAIL",
+        },
+      },
+    ],
+
+    // Again generate reply only
+    [
+      {
+        user: "{{user1}}",
+        content: {
+          text: "generate a reply for emailId: 987fcdeb-1234-5678-9012-345678901234",
+          action: "REPLY_EMAIL",
+        },
+      },
+      {
+        user: "{{agent}}",
+        content: {
+          text: "Seems like you want to generate a reply again. I have generated a reply for email UUID 987fcdeb-1234-5678-9012-345678901234:\n\n---\nThank you for your email regarding the project update. I'll review the details and get back to you by end of day.\n---\n\nTo send this reply, please say 'confirm reply' or 'confirm reply emailId: 987fcdeb-1234-5678-9012-345678901234'.",
+          action: "REPLY_EMAIL",
+        },
+      },
+    ],
+
+    // User response tokens finished
+
+    [
+      {
+        user: "{{user1}}",
+        content: {
+          text: "generate a reply for emailId: 987fcdeb-1234-5678-9012-345678901234",
+          action: "REPLY_EMAIL",
+        },
+      },
+      {
+        user: "{{agent}}",
+        content: {
+          text: "Looks like you ran out of tokens, i will generate the same response again. I have generated a reply for email UUID 987fcdeb-1234-5678-9012-345678901234:\n\n---\nThank you for your email regarding the project update. I'll review the details and get back to you by end of day.\n---\n\nTo send this reply, please say 'confirm reply' or 'confirm reply emailId: 987fcdeb-1234-5678-9012-345678901234'.",
+          action: "REPLY_EMAIL",
+        },
+      },
+    ],
+
+    // Network error during reply generation
+
+    [
+      {
+        user: "{{user1}}",
+        content: {
+          text: "generate a reply for emailId: 987fcdeb-1234-5678-9012-345678901234",
+          action: "REPLY_EMAIL",
+        },
+      },
+      {
+        user: "{{agent}}",
+        content: {
+          text: "There was a network issue maybe. I have generated a reply for email UUID 987fcdeb-1234-5678-9012-345678901234:\n\n---\nThank you for your email regarding the project update. I'll review the details and get back to you by end of day.\n---\n\nTo send this reply, please say 'confirm reply' or 'confirm reply emailId: 987fcdeb-1234-5678-9012-345678901234'.",
+          action: "REPLY_EMAIL",
+        },
+      },
+    ],
+
+    // Confirm specific pending reply
+    [
+      {
+        user: "{{user1}}",
+        content: {
+          text: "confirm reply",
+          action: "REPLY_EMAIL",
+        },
+      },
+      {
+        user: "{{agent}}",
+        content: {
+          text: "✅ Your reply has been sent to sarah@company.com\n\nSent message: Thank you for your email regarding the project update. I'll review the details and get back to you by end of day.",
+          action: "REPLY_EMAIL",
+        },
+      },
+    ],
   ] as ActionExample[][],
 };

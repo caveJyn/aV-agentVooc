@@ -1,5 +1,6 @@
 import path from "path";
 import fs from "fs";
+import { getEmbeddingConfig } from "@elizaos/core"; // Added import for embedding config
 
 export * from "./sqliteTables.ts";
 export * from "./sqlite_vec.ts";
@@ -241,10 +242,6 @@ export class SqliteDatabaseAdapter
     }
 
     async createMemory(memory: Memory, tableName: string): Promise<void> {
-        // Delete any existing memory with the same ID first
-        // const deleteSql = `DELETE FROM memories WHERE id = ? AND type = ?`;
-        // this.db.prepare(deleteSql).run(memory.id, tableName);
-
         let isUnique = true;
 
         if (memory.embedding) {
@@ -266,8 +263,8 @@ export class SqliteDatabaseAdapter
         const content = JSON.stringify(memory.content);
         const createdAt = memory.createdAt ?? Date.now();
 
-        let embeddingValue: Float32Array = new Float32Array(384);
-        // If embedding is not available, we just load an array with a length of 384
+        let embeddingValue: Float32Array = new Float32Array(getEmbeddingConfig().dimensions); // Updated to use configured dimensions
+        // If embedding is available, use it; otherwise, use the default zero vector with configured dimensions
         if (memory?.embedding && memory?.embedding?.length > 0) {
             embeddingValue = new Float32Array(memory.embedding);
         }
@@ -349,7 +346,6 @@ export class SqliteDatabaseAdapter
         }
     ): Promise<Memory[]> {
         const queryParams = [
-            // JSON.stringify(embedding),
             new Float32Array(embedding),
             params.tableName,
             params.agentId,
@@ -653,15 +649,11 @@ export class SqliteDatabaseAdapter
     }
 
     async getRoomsForParticipants(userIds: UUID[]): Promise<UUID[]> {
-        // Assuming userIds is an array of UUID strings, prepare a list of placeholders
         const placeholders = userIds.map(() => "?").join(", ");
-        // Construct the SQL query with the correct number of placeholders
         const sql = `SELECT DISTINCT roomId FROM participants WHERE userId IN (${placeholders})`;
-        // Execute the query with the userIds array spread into arguments
         const rows = this.db.prepare(sql).all(...userIds) as {
             roomId: string;
         }[];
-        // Map and return the roomId values as UUIDs
         return rows.map((row) => row.roomId as UUID);
     }
 
@@ -765,6 +757,12 @@ export class SqliteDatabaseAdapter
             console.log("Error removing cache", error);
             return false;
         }
+    }
+
+     async clearAgentCache(agentId: UUID): Promise<void> {
+        const sql = "DELETE FROM cache WHERE agentId = ?";
+        this.db.prepare(sql).run(agentId);
+        elizaLogger.debug(`[Cache] Cleared all cache entries for agent ${agentId}`);
     }
 
     async getKnowledge(params: {
@@ -952,7 +950,7 @@ export class SqliteDatabaseAdapter
                 error?.code === "SQLITE_CONSTRAINT_PRIMARYKEY";
 
             if (isShared && isPrimaryKeyError) {
-                elizaLogger.info(
+                elizaLogger.debug(
                     `Shared knowledge ${knowledge.id} already exists, skipping`
                 );
                 return;
@@ -980,7 +978,6 @@ export class SqliteDatabaseAdapter
         }
 
         try {
-            // Execute the transaction and ensure it's called with ()
             await this.db.transaction(() => {
                 if (id.includes("*")) {
                     const pattern = id.replace("*", "%");
@@ -993,9 +990,8 @@ export class SqliteDatabaseAdapter
                     elizaLogger.debug(
                         `[Knowledge Remove] Pattern deletion affected ${result.changes} rows`
                     );
-                    return result.changes; // Return changes for logging
+                    return result.changes;
                 } else {
-                    // Log queries before execution
                     const selectSql = "SELECT id FROM knowledge WHERE id = ?";
                     const chunkSql =
                         "SELECT id FROM knowledge WHERE json_extract(content, '$.metadata.originalId') = ?";
@@ -1016,7 +1012,6 @@ export class SqliteDatabaseAdapter
                         chunkIds: chunks.map((c) => c.id),
                     });
 
-                    // Execute and log chunk deletion
                     const chunkDeleteSql =
                         "DELETE FROM knowledge WHERE json_extract(content, '$.metadata.originalId') = ?";
                     elizaLogger.debug(
@@ -1027,7 +1022,6 @@ export class SqliteDatabaseAdapter
                         `[Knowledge Remove] Chunk deletion affected ${chunkResult.changes} rows`
                     );
 
-                    // Execute and log main entry deletion
                     const mainDeleteSql = "DELETE FROM knowledge WHERE id = ?";
                     elizaLogger.debug(
                         `[Knowledge Remove] Executing main deletion: ${mainDeleteSql} [${id}]`
@@ -1043,7 +1037,6 @@ export class SqliteDatabaseAdapter
                         `[Knowledge Remove] Total rows affected: ${totalChanges}`
                     );
 
-                    // Verify deletion
                     const verifyMain = this.db.prepare(selectSql).get(id);
                     const verifyChunks = this.db.prepare(chunkSql).all(id);
                     elizaLogger.debug(
@@ -1054,9 +1047,9 @@ export class SqliteDatabaseAdapter
                         }
                     );
 
-                    return totalChanges; // Return changes for logging
+                    return totalChanges;
                 }
-            })(); // Important: Call the transaction function
+            })();
 
             elizaLogger.debug(
                 `[Knowledge Remove] Transaction completed for id: ${id}`
@@ -1095,28 +1088,38 @@ export class SqliteDatabaseAdapter
 
 const sqliteDatabaseAdapter: Adapter = {
     init: (runtime: IAgentRuntime) => {
-        const dataDir = path.join(process.cwd(), "data");
+        const defaultDataDir = path.join(process.cwd(), "data");
+        const filePath = runtime.getSetting("SQLITE_FILE") ?? path.resolve(defaultDataDir, "db.sqlite");
 
-        if (!fs.existsSync(dataDir)) {
-            fs.mkdirSync(dataDir, { recursive: true });
+        // Ensure the directory for the database file exists
+        const dbDir = path.dirname(filePath);
+        if (!fs.existsSync(dbDir)) {
+            try {
+                fs.mkdirSync(dbDir, { recursive: true });
+                elizaLogger.debug(`Created database directory at ${dbDir}`);
+            } catch (error) {
+                elizaLogger.error(`Failed to create database directory at ${dbDir}:`, error);
+                throw error;
+            }
+        } else {
+            elizaLogger.debug(`Database directory already exists at ${dbDir}`);
         }
 
-        const filePath = runtime.getSetting("SQLITE_FILE") ?? path.resolve(dataDir, "db.sqlite");
-        elizaLogger.info(`Initializing SQLite database at ${filePath}...`);
-        const db = new SqliteDatabaseAdapter(new Database(filePath));
+        elizaLogger.debug(`Initializing SQLite database at ${filePath}...`);
+        const db = new Database(filePath);
 
         // Test the connection
-        db.init()
+        const adapter = new SqliteDatabaseAdapter(db);
+        adapter.init()
             .then(() => {
-                elizaLogger.success(
-                    "Successfully connected to SQLite database"
-                );
+                elizaLogger.success("Successfully connected to SQLite database");
             })
             .catch((error) => {
                 elizaLogger.error("Failed to connect to SQLite:", error);
+                throw error;
             });
 
-        return db;
+        return adapter;
     },
 };
 

@@ -1,0 +1,1989 @@
+Requirements Breakdown
+Character Profile Picture Upload:
+Endpoint: POST /characters/:characterId/upload-profile-image
+
+Functionality: Upload an image to Sanity and link it to a character's profile.image field.
+
+Tools: Use Multer for file handling and Sanity CMS for storage.
+
+Agent Image Upload with Caption Generation:
+Endpoint: POST /api/:agentId/upload-agent-image
+
+Functionality: Upload an image, generate a caption, store it as a knowledge item in Sanity, and remove Twitter/Instagram features.
+
+Tools: Multer, Sanity CMS, and a caption generation function.
+
+Schema Updates:
+Define the profile.image field in the character schema.
+
+Ensure the knowledge schema supports image uploads (e.g., via metadata.imageUrl).
+
+Update the Character type interface if needed.
+
+File to Update:
+client-direct/src/index.ts for both endpoints.
+
+
+
+Step 1: Define Schemas in Sanity
+Character Schema (plugin-sanity/schemas/character.ts)
+Your existing character schema already includes a profile object with an image field:
+
+`{
+  name: "profile",
+  type: "object",
+  fields: [
+    {
+      name: "image",
+      type: "image",
+      title: "Profile Image",
+      options: { hotspot: true },
+    },
+  ],
+}`
+
+
+Knowledge Schema (plugin-sanity/schemas/knowledge.ts)
+Your knowledge schema already has a metadata object with an imageUrl field:
+
+`{
+  name: "metadata",
+  type: "object",
+  title: "Metadata",
+  fields: [
+    // Other fields...
+    {
+      name: "imageUrl",
+      type: "string",
+    },
+    // Other fields...
+  ],
+}`
+
+
+GROQ Query in Sanity Client
+The loadEnabledSanityCharacters function in plugin-sanity/src/index.ts already fetches the profile field:
+
+`const query = `*[_type == "character" && enabled == true] {
+  // Other fields...
+  profile,
+  // Other fields...
+}`;`
+
+
+Processing: The profile image URL is processed with urlFor:
+
+`const profileImage = sanityChar.profile?.image
+  ? urlFor(sanityChar.profile.image).url()
+  : undefined;`
+
+
+
+  Character Type Interface
+The Character type in @elizaos/core should include the profile field. Since your schema defines it, and the type is likely generated or manually aligned, ensure it includes:
+
+`interface Character {
+  // Other fields...
+  profile?: { image?: string };
+  // Other fields...
+}`
+
+
+
+Step 2: Implement Endpoints in client-direct/src/index.ts
+Add these endpoints after existing routes (e.g., after /:agentId/tts) and before the error handlers in client-direct/src/index.ts.
+1. Character Profile Picture Upload Endpoint
+This endpoint uploads an image to Sanity and updates the character's profile.image field.
+
+`import { sanityClient, urlFor } from "@elizaos-plugins/plugin-sanity";
+import Session from "supertokens-node/recipe/session";
+import { validateUuid } from "@elizaos/core";
+import * as fs from "fs";
+
+// ... (inside DirectClient constructor, after other routes)
+
+this.app.post(
+  "/characters/:characterId/upload-profile-image",
+  upload.single("image"),
+  async (req, res) => {
+    try {
+      // Validate session
+      const session = await Session.getSession(req, res, { sessionRequired: true });
+      const userId = session.getUserId();
+      if (!userId) {
+        return res.status(401).json({ error: "[CLIENT-DIRECT] Unauthorized: No user ID found in session" });
+      }
+
+      // Validate characterId
+      const { characterId } = req.params;
+      if (!validateUuid(characterId)) {
+        return res.status(400).json({ error: "[CLIENT-DIRECT] Invalid character ID" });
+      }
+
+      // Validate file
+      const file = req.file;
+      if (!file) {
+        return res.status(400).json({ error: "[CLIENT-DIRECT] No image provided" });
+      }
+
+      // Validate file type
+      const allowedMimeTypes = ["image/jpeg", "image/png", "image/gif"];
+      if (!allowedMimeTypes.includes(file.mimetype)) {
+        await fs.promises.unlink(file.path).catch((err) => {
+          elizaLogger.error("Failed to delete invalid file:", err);
+        });
+        return res.status(400).json({ error: "Invalid file type. Only JPEG, PNG, and GIF are allowed." });
+      }
+
+      // Verify user owns the character
+      const character = await sanityClient.fetch(
+        `*[_type == "character" && id == $characterId && createdBy->userId == $userId][0]`,
+        { characterId, userId }
+      );
+      if (!character) {
+        await fs.promises.unlink(file.path).catch((err) => {
+          elizaLogger.error("Failed to delete file for unauthorized character:", err);
+        });
+        return res.status(403).json({ error: "[CLIENT-DIRECT] Character not found or access denied" });
+      }
+
+      // Upload image to Sanity
+      let imageAsset;
+      try {
+        const fileBuffer = await fs.promises.readFile(file.path);
+        imageAsset = await sanityClient.assets.upload("image", fileBuffer, {
+          filename: file.originalname,
+        });
+        elizaLogger.debug(`[CLIENT-DIRECT] Image uploaded to Sanity: ${imageAsset._id}`);
+      } catch (sanityError) {
+        await fs.promises.unlink(file.path).catch((err) => {
+          elizaLogger.error("Failed to delete file on Sanity error:", err);
+        });
+        elizaLogger.error(`[CLIENT-DIRECT] Failed to upload image to Sanity: ${sanityError.message}`);
+        return res.status(500).json({ error: "[CLIENT-DIRECT] Failed to upload image to Sanity" });
+      }
+
+      // Update character’s profile.image in Sanity
+      try {
+        await sanityClient
+          .patch(character._id)
+          .set({
+            profile: {
+              image: {
+                _type: "image",
+                asset: {
+                  _ref: imageAsset._id,
+                  _type: "reference",
+                },
+              },
+            },
+          })
+          .commit();
+        elizaLogger.debug(`[CLIENT-DIRECT] Updated character ${characterId} with new profile image`);
+      } catch (patchError) {
+        await fs.promises.unlink(file.path).catch((err) => {
+          elizaLogger.error("Failed to delete file on patch error:", err);
+        });
+        elizaLogger.error(`[CLIENT-DIRECT] Failed to update character profile: ${patchError.message}`);
+        return res.status(500).json({ error: "[CLIENT-DIRECT] Failed to update character profile" });
+      }
+
+      // Clean up local file
+      await fs.promises.unlink(file.path).catch((err) => {
+        elizaLogger.error("Failed to delete local file:", err);
+      });
+
+      // Prepare response
+      const imageUrl = urlFor(imageAsset).url();
+      res.json({
+        message: "Profile image uploaded successfully",
+        url: imageUrl,
+        sanityAssetId: imageAsset._id,
+      });
+
+      elizaLogger.info(`[CLIENT-DIRECT] Profile image uploaded for character ${characterId} by user ${userId}`);
+    } catch (error) {
+      if (req.file) {
+        await fs.promises.unlink(req.file.path).catch((err) => {
+          elizaLogger.error("Failed to delete file on error:", err);
+        });
+      }
+      elizaLogger.error("[CLIENT-DIRECT] Error uploading profile image:", error);
+      res.status(500).json({ error: "[CLIENT-DIRECT] Failed to upload profile image", details: error.message });
+    }
+  }
+);`
+
+
+
+Key Points:
+Authentication: Validates the user session using SuperTokens.
+
+Authorization: Ensures the user owns the character via a Sanity query.
+
+File Handling: Uses Multer to save the file temporarily, then uploads it to Sanity.
+
+Sanity Update: Patches the character document with the image asset reference.
+
+Cleanup: Deletes the temporary file after upload.
+
+2. Agent Image Upload Endpoint (Caption Generation)
+This endpoint uploads an image, generates a caption, and stores it as a knowledge item, with Twitter/Instagram features removed.
+
+`import { generateCaption } from "@elizaos/core";
+
+// ... (inside DirectClient constructor, after other routes)
+
+this.app.post(
+  "/api/:agentId/upload-agent-image",
+  cors({
+    origin: process.env.WEBSITE_DOMAIN || "http://localhost:5173",
+    credentials: true,
+    allowedHeaders: ["Content-Type", ...supertokens.getAllCORSHeaders()],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  }),
+  middleware(),
+  upload.single("image"),
+  async (req, res) => {
+    try {
+      // Validate session
+      const session = await Session.getSession(req, res, { sessionRequired: true });
+      const userId = session.getUserId();
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized: No user ID found in session" });
+      }
+
+      const agentId = req.params.agentId;
+      if (!validateUuid(agentId)) {
+        return res.status(400).json({ error: "Invalid agent ID" });
+      }
+
+      // Validate file
+      if (!req.file) {
+        return res.status(400).json({ error: "No image provided" });
+      }
+
+      // Validate file type
+      const allowedMimeTypes = ["image/jpeg", "image/png", "image/gif"];
+      if (!allowedMimeTypes.includes(req.file.mimetype)) {
+        await fs.promises.unlink(req.file.path).catch((err) => {
+          elizaLogger.error("Failed to delete invalid file:", err);
+        });
+        return res.status(400).json({ error: "Invalid file type. Only JPEG, PNG, and GIF are allowed." });
+      }
+
+      // Find the agent
+      let runtime = this.agents.get(agentId);
+      if (!runtime) {
+        runtime = Array.from(this.agents.values()).find(
+          (a) => a.character.name.toLowerCase() === agentId.toLowerCase()
+        );
+      }
+      if (!runtime) {
+        await fs.promises.unlink(req.file.path).catch((err) => {
+          elizaLogger.error("Failed to delete file for missing agent:", err);
+        });
+        return res.status(404).json({ error: "Agent not found" });
+      }
+
+      // Verify user access to the character
+      const character = await sanityClient.fetch(
+        `*[_type == "character" && id == $agentId && createdBy->userId == $userId][0]`,
+        { agentId, userId }
+      );
+      if (!character) {
+        await fs.promises.unlink(req.file.path).catch((err) => {
+          elizaLogger.error("Failed to delete file for missing character:", err);
+        });
+        return res.status(403).json({ error: "Character not found or access denied" });
+      }
+
+      // Upload image to Sanity
+      let imageAsset;
+      try {
+        const fileBuffer = await fs.promises.readFile(req.file.path);
+        imageAsset = await sanityClient.assets.upload("image", fileBuffer, {
+          filename: req.file.originalname,
+        });
+        elizaLogger.debug(`[CLIENT-DIRECT] Image uploaded to Sanity: ${imageAsset._id}`);
+      } catch (sanityError) {
+        await fs.promises.unlink(req.file.path).catch((err) => {
+          elizaLogger.error("Failed to delete file on Sanity error:", err);
+        });
+        elizaLogger.error(`[CLIENT-DIRECT] Failed to upload image to Sanity: ${sanityError.message}`);
+        return res.status(500).json({ error: "Failed to upload image to Sanity" });
+      }
+
+      // Clean up local file
+      await fs.promises.unlink(req.file.path).catch((err) => {
+        elizaLogger.error("Failed to delete local file:", err);
+      });
+
+      // Generate caption
+      let caption = "";
+      try {
+        caption = await generateCaption({ imageUrl: urlFor(imageAsset).url() }, runtime);
+        elizaLogger.debug(`[CLIENT-DIRECT] Generated caption: ${caption}`);
+      } catch (captionError) {
+        elizaLogger.warn(`[CLIENT-DIRECT] Failed to generate caption: ${captionError.message}`);
+        caption = `Uploaded image: ${req.file.originalname}`;
+      }
+
+      // Store image as knowledge in Sanity
+      try {
+        await sanityClient.create({
+          _type: "knowledge",
+          agentId,
+          text: caption,
+          metadata: {
+            source: "image-upload",
+            type: "image",
+            imageAssetId: imageAsset._id,
+            imageUrl: urlFor(imageAsset).url(),
+          },
+          createdAt: new Date().toISOString(),
+        });
+        elizaLogger.debug(`[CLIENT-DIRECT] Stored image as knowledge for agent ${agentId}`);
+      } catch (knowledgeError) {
+        elizaLogger.warn(`[CLIENT-DIRECT] Failed to store image as knowledge: ${knowledgeError.message}`);
+      }
+
+      // Respond
+      res.json({
+        message: "Agent image uploaded successfully",
+        url: urlFor(imageAsset).url(),
+        sanityAssetId: imageAsset._id,
+        caption,
+      });
+
+      elizaLogger.info(`[CLIENT-DIRECT] Agent image processed for agent ${agentId} by user ${userId}`);
+    } catch (error) {
+      if (req.file) {
+        await fs.promises.unlink(req.file.path).catch((err) => {
+          elizaLogger.error("Failed to delete file on error:", err);
+        });
+      }
+      elizaLogger.error("[CLIENT-DIRECT] Error uploading agent image:", error);
+      res.status(500).json({ error: "Failed to upload agent image", details: error.message });
+    }
+  }
+);`
+
+Key Points:
+Authentication: Uses SuperTokens for session validation.
+
+Authorization: Ensures the user owns the agent’s character.
+
+File Handling: Multer uploads the file, then it’s sent to Sanity.
+
+Caption Generation: Calls generateCaption (assumed available from @elizaos/core).
+
+Knowledge Storage: Stores the image URL and caption in a knowledge document.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+this.app.post(
+  "/api/:agentId/upload-agent-image",
+  cors({ origin: process.env.WEBSITE_DOMAIN || "http://localhost:5173", credentials: true, ... }),
+  middleware(),
+  upload.single("image"),
+  async (req, res) => {
+    // Validates session, agentId, file, and file type
+    // Finds agent in runtime or by name
+    // Verifies character ownership in Sanity
+    // Uploads image to Sanity
+    // Generates caption
+    // Stores image as knowledge in Sanity
+    // Responds with image URL, asset ID, and caption
+  }
+);
+
+Validation:
+Checks session and user ID.
+
+Validates agentId as a UUID.
+
+Ensures file exists and is JPEG/PNG/GIF.
+
+Verifies agent exists in this.agents (runtime) and user owns the character in Sanity.
+
+Processing:
+Uploads image to Sanity using sanityClient.assets.upload.
+
+Generates a caption using generateCaption.
+
+Stores metadata as a knowledge document in Sanity.
+
+Cleans up local file.
+
+
+
+update chat.tsx to be able to upload images to the agent:
+`import { Button } from "@/components/ui/button";
+import {
+  ChatBubble,
+  ChatBubbleMessage,
+  ChatBubbleTimestamp,
+} from "@/components/ui/chat/chat-bubble";
+import { ChatInput } from "@/components/ui/chat/chat-input";
+import { ChatMessageList } from "@/components/ui/chat/chat-message-list";
+import { useTransition, animated, type AnimatedProps } from "@react-spring/web";
+import { Paperclip, Send, X, Image as ImageIcon } from "lucide-react";
+import { useEffect, useRef, useState, useCallback } from "react";
+import type { Content, UUID } from "@elizaos/core";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api";
+import { cn, moment } from "@/lib/utils";
+import { Avatar, AvatarImage } from "./ui/avatar";
+import CopyButton from "./copy-button";
+import ChatTtsButton from "./ui/chat/chat-tts-button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import { useToast } from "@/hooks/use-toast";
+import AIWriter from "react-aiwriter";
+import type { IAttachment } from "@/types";
+import { AudioRecorder } from "./audio-recorder";
+import { Badge } from "./ui/badge";
+
+type ExtraContentFields = {
+  user: string;
+  createdAt: number;
+  isLoading?: boolean;
+};
+
+type ContentWithUser = Content & ExtraContentFields;
+
+type AnimatedDivProps = AnimatedProps<{ style: React.CSSProperties }> & {
+  children?: React.ReactNode;
+};
+
+export default function Page({ agentId }: { agentId: UUID }) {
+  const { toast } = useToast();
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [input, setInput] = useState("");
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const queryClient = useQueryClient();
+
+  const getMessageVariant = (role: string) =>
+    role !== "user" ? "received" : "sent";
+
+  // Manual scroll to bottom
+  const scrollToBottom = useCallback(() => {
+    console.log("scrollToBottom called");
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, []);
+
+  // Dummy props for ChatMessageList
+  const isAtBottom = true; // Always scroll to bottom
+  const disableAutoScroll = useCallback(() => {
+    console.log("disableAutoScroll called (no-op)");
+  }, []);
+
+  // Initial scroll and focus
+  useEffect(() => {
+    console.log("Initial mount, scrolling to bottom");
+    scrollToBottom();
+    inputRef.current?.focus();
+  }, [scrollToBottom]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      if (e.nativeEvent.isComposing) return;
+      handleSendMessage(e as unknown as React.FormEvent<HTMLFormElement>);
+    }
+  };
+
+  const handleSendMessage = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!input) return;
+
+    const attachments: IAttachment[] | undefined = selectedFile
+      ? [
+          {
+            url: URL.createObjectURL(selectedFile),
+            contentType: selectedFile.type,
+            title: selectedFile.name,
+          },
+        ]
+      : undefined;
+
+    const newMessages = [
+      {
+        text: input,
+        user: "user",
+        createdAt: Date.now(),
+        attachments,
+      },
+      {
+        text: "",
+        user: "system",
+        isLoading: true,
+        createdAt: Date.now(),
+      },
+    ];
+
+    queryClient.setQueryData(
+      ["messages", agentId],
+      (old: ContentWithUser[] = []) => {
+        console.log("Adding new messages:", newMessages);
+        return [...old, ...newMessages];
+      }
+    );
+
+    sendMessageMutation.mutate({
+      message: input,
+      selectedFile: selectedFile ? selectedFile : null,
+    });
+
+    setSelectedFile(null);
+    setInput("");
+    formRef.current?.reset();
+    scrollToBottom();
+  };
+
+  const sendMessageMutation = useMutation({
+    mutationKey: ["send_message", agentId],
+    mutationFn: ({
+      message,
+      selectedFile,
+    }: {
+      message: string;
+      selectedFile?: File | null;
+    }) => {
+      console.log(`Sending message to: /api/${agentId}/message`);
+      return apiClient.sendMessage(agentId, message, selectedFile);
+    },
+    onSuccess: (newMessages: ContentWithUser[]) => {
+      console.log("Received new messages:", newMessages);
+      queryClient.setQueryData(
+        ["messages", agentId],
+        (old: ContentWithUser[] = []) => {
+          const updated = [
+            ...old.filter((msg) => !msg.isLoading),
+            ...newMessages.map((msg) => ({
+              ...msg,
+              createdAt: msg.createdAt || Date.now(),
+            })),
+          ];
+          console.log("Updated messages cache:", updated);
+          return updated;
+        }
+      );
+      scrollToBottom();
+    },
+    onError: (e: any) => {
+      console.error("Send message error:", e);
+      queryClient.setQueryData(
+        ["messages", agentId],
+        (old: ContentWithUser[] = []) => old.filter((msg) => !msg.isLoading)
+      );
+      toast({
+        variant: "destructive",
+        title: "Unable to send message",
+        description: e.message.includes("Character not found or access denied")
+          ? "This character does not exist or you don't have access."
+          : e.message || "Failed to send message",
+      });
+    },
+  });
+
+  const uploadAgentImageMutation = useMutation({
+    mutationKey: ["upload_agent_image", agentId],
+    mutationFn: (file: File) => {
+      console.log(`Uploading image to: /api/${agentId}/upload-agent-image`);
+      return apiClient.uploadAgentImage(agentId, file);
+    },
+    onSuccess: (data: { message: string; url: string; sanityAssetId: string; caption: string }) => {
+      console.log("Image upload success:", data);
+      const newMessage: ContentWithUser = {
+        text: data.caption || "Image uploaded",
+        user: "user",
+        createdAt: Date.now(),
+        attachments: [
+          {
+            id: data.sanityAssetId,
+            source: "image-upload",
+            description: data.caption,
+            text: data.caption,
+            url: data.url,
+            contentType: "image/*",
+            title: "Uploaded Image",
+          },
+        ],
+      };
+      queryClient.setQueryData(
+        ["messages", agentId],
+        (old: ContentWithUser[] = []) => {
+          const updated = [...old, newMessage];
+          console.log("Updated messages with image:", updated);
+          return updated;
+        }
+      );
+      toast({
+        title: "Image uploaded",
+        description: "Image added to agent's knowledge and chat.",
+      });
+      setSelectedFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      scrollToBottom();
+    },
+    onError: (error: any) => {
+      console.error("Upload agent image error:", error);
+      toast({
+        variant: "destructive",
+        title: "Unable to upload image",
+        description: error.message || "Failed to upload image",
+      });
+    },
+  });
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file?.type.startsWith("image/")) {
+      setSelectedFile(file);
+    }
+  };
+
+  const handleUploadAgentImage = () => {
+    if (selectedFile) {
+      uploadAgentImageMutation.mutate(selectedFile);
+    } else {
+      toast({
+        variant: "default",
+        title: "No image selected",
+        description: "Please select an image to upload.",
+      });
+    }
+  };
+
+  const messages = queryClient.getQueryData<ContentWithUser[]>(["messages", agentId]) || [];
+
+  const transitions = useTransition(messages, {
+    keys: (message) => `${message.createdAt}-${message.user}-${message.text}`,
+    from: { opacity: 0, transform: "translateY(50px)" },
+    enter: { opacity: 1, transform: "translateY(0px)" },
+    leave: { opacity: 0, transform: "translateY(10px)" },
+  });
+
+  const CustomAnimatedDiv = animated.div as React.FC<AnimatedDivProps>;
+
+  console.log("Chat render");
+  console.log("ChatMessageList props:", { scrollRef, isAtBottom, scrollToBottom, disableAutoScroll });
+
+  return (
+    <div className="flex flex-col w-full h-[calc(100dvh)] p-4">
+      <div className="flex-1 overflow-y-auto">
+        <ChatMessageList
+          scrollRef={scrollRef}
+          isAtBottom={isAtBottom}
+          scrollToBottom={scrollToBottom}
+          disableAutoScroll={disableAutoScroll}
+        >
+          {transitions((style, message: ContentWithUser) => {
+            const variant = getMessageVariant(message?.user);
+            return (
+              <CustomAnimatedDiv
+                style={{
+                  ...style,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.5rem",
+                  padding: "1rem",
+                }}
+              >
+                <ChatBubble
+                  variant={variant}
+                  className="flex flex-row items-center gap-2"
+                >
+                  {message?.user !== "user" ? (
+                    <Avatar className="size-8 p-1 border rounded-full select-none">
+                      <AvatarImage src="/elizaos-icon.png" />
+                    </Avatar>
+                  ) : null}
+                  <div className="flex flex-col">
+                    <ChatBubbleMessage isLoading={message?.isLoading}>
+                      {message?.user !== "user" ? (
+                        <AIWriter>{message?.text}</AIWriter>
+                      ) : (
+                        message?.text
+                      )}
+                      <div>
+                        {message?.attachments?.map((attachment: IAttachment) => (
+                          <div
+                            className="flex flex-col gap-1 mt-2"
+                            key={`${attachment.url}-${attachment.title}`}
+                          >
+                            <img
+                              alt={attachment.title || "attachment"}
+                              src={attachment.url}
+                              width="100%"
+                              height="100%"
+                              className="w-64 rounded-md"
+                            />
+                            <div className="flex items-center justify-between gap-4">
+                              <span />
+                              <span />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </ChatBubbleMessage>
+                    <div className="flex items-center gap-4 justify-between w-full mt-1">
+                      {message?.text && !message?.isLoading ? (
+                        <div className="flex items-center gap-1">
+                          <CopyButton text={message?.text} />
+                          <ChatTtsButton agentId={agentId} text={message?.text} />
+                        </div>
+                      ) : null}
+                      <div
+                        className={cn([
+                          message?.isLoading ? "mt-2" : "",
+                          "flex items-center justify-between gap-4 select-none",
+                        ])}
+                      >
+                        {message?.source ? (
+                          <Badge variant="outline">{message.source}</Badge>
+                        ) : null}
+                        {message?.action ? (
+                          <Badge variant="outline">{message.action}</Badge>
+                        ) : null}
+                        {message?.createdAt ? (
+                          <ChatBubbleTimestamp
+                            timestamp={moment(message?.createdAt).format("LT")}
+                          />
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                </ChatBubble>
+              </CustomAnimatedDiv>
+            );
+          })}
+        </ChatMessageList>
+      </div>
+      <div className="px-4 pb-4">
+        <form
+          ref={formRef}
+          onSubmit={handleSendMessage}
+          className="relative rounded-md border bg-card"
+        >
+          {selectedFile ? (
+            <div className="p-3 flex">
+              <div className="relative rounded-md border p-2">
+                <Button
+                  onClick={() => setSelectedFile(null)}
+                  className="absolute -right-2 -top-2 size-[22px] ring-2 ring-background"
+                  variant="outline"
+                  size="icon"
+                >
+                  <X />
+                </Button>
+                <img
+                  alt="Selected file"
+                  src={URL.createObjectURL(selectedFile)}
+                  height="100%"
+                  width="100%"
+                  className="aspect-square object-contain w-16"
+                />
+              </div>
+            </div>
+          ) : null}
+          <ChatInput
+            ref={inputRef}
+            onKeyDown={handleKeyDown}
+            value={input}
+            onChange={({ target }) => setInput(target.value)}
+            placeholder="Type your message here..."
+            className="min-h-12 resize-none rounded-md bg-card border-0 p-3 shadow-none focus-visible:ring-0"
+          />
+          <div className="flex items-center p-3 pt-0">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      if (fileInputRef.current) {
+                        fileInputRef.current.click();
+                      }
+                    }}
+                  >
+                    <Paperclip className="size-4" />
+                    <span className="sr-only">Attach file</span>
+                  </Button>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    accept="image/*"
+                    className="hidden"
+                  />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                <p>Attach file</p>
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleUploadAgentImage}
+                  disabled={!selectedFile}
+                >
+                  <ImageIcon className="size-4" />
+                  <span className="sr-only">Upload image to agent</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                <p>Upload image to agent</p>
+              </TooltipContent>
+            </Tooltip>
+            <AudioRecorder
+              agentId={agentId}
+              onChange={(newInput: string) => setInput(newInput)}
+            />
+            <Button
+              disabled={!input || sendMessageMutation?.isPending}
+              type="submit"
+              size="sm"
+              className="ml-auto gap-1.5 h-[30px]"
+            >
+              {sendMessageMutation?.isPending ? "..." : "Send Message"}
+              <Send className="size-3.5" />
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}`
+
+
+
+updat chat.tsx to be able to fetch images from agents knowledge:
+`import { Button } from "@/components/ui/button";
+import {
+  ChatBubble,
+  ChatBubbleMessage,
+  ChatBubbleTimestamp,
+} from "@/components/ui/chat/chat-bubble";
+import { ChatInput } from "@/components/ui/chat/chat-input";
+import { ChatMessageList } from "@/components/ui/chat/chat-message-list";
+import { useTransition, animated, type AnimatedProps } from "@react spring/web";
+import { Paperclip, Send, X, Image as ImageIcon } from "lucide-react";
+import { useEffect, useRef, useState, useCallback } from "react";
+import type { Content, UUID } from "@elizaos/core";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api";
+import { cn, moment } from "@/lib/utils";
+import { Avatar, AvatarImage } from "./ui/avatar";
+import CopyButton from "./copy-button";
+import ChatTtsButton from "./ui/chat/chat-tts-button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import { useToast } from "@/hooks/use-toast";
+import AIWriter from "react-aiwriter";
+import type { IAttachment } from "@/types";
+import { AudioRecorder } from "./audio-recorder";
+import { Badge } from "./ui/badge";
+
+// Define ImageItem interface for agent knowledge images
+interface ImageItem {
+  imageAssetId: string;
+  imageUrl: string;
+  caption: string;
+  createdAt: string;
+}
+
+type ExtraContentFields = {
+  user: string;
+  createdAt: number;
+  isLoading?: boolean;
+};
+
+type ContentWithUser = Content & ExtraContentFields;
+
+type AnimatedDivProps = AnimatedProps<{ style: React.CSSProperties }> & {
+  children?: React.ReactNode;
+};
+
+export default function Page({ agentId }: { agentId: UUID }) {
+  const { toast } = useToast();
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [input, setInput] = useState("");
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const queryClient = useQueryClient();
+
+  // Fetch agent images from knowledge store
+  const {
+    data: images = [],
+    isLoading: isLoadingImages,
+    error: imagesError,
+  } = useQuery({
+    queryKey: ["agent-images", agentId],
+    queryFn: async () => {
+      console.log("Fetching agent images");
+      try {
+        const response = await apiClient.getKnowledge(agentId);
+        const imageCollection = response.knowledge?.find(
+          (k) => k.metadata?.type === "image-collection"
+        );
+        return (imageCollection?.metadata?.images || []) as ImageItem[];
+      } catch (error) {
+        console.error("Failed to fetch agent images:", error);
+        return [];
+      }
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    retry: 1,
+  });
+
+  const getMessageVariant = (role: string) =>
+    role !== "user" ? "received" : "sent";
+
+  // Manual scroll to bottom
+  const scrollToBottom = useCallback(() => {
+    console.log("scrollToBottom called");
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, []);
+
+  // Dummy props for ChatMessageList
+  const isAtBottom = true;
+  const disableAutoScroll = useCallback(() => {
+    console.log("disableAutoScroll called (no-op)");
+  }, []);
+
+  // Initial scroll and focus
+  useEffect(() => {
+    console.log("Initial mount, scrolling to bottom");
+    scrollToBottom();
+    inputRef.current?.focus();
+  }, [scrollToBottom]);
+
+  // Scroll after images load
+  useEffect(() => {
+    if (!isLoadingImages && images.length > 0) {
+      console.log("Images loaded, scrolling to bottom");
+      scrollToBottom();
+    }
+  }, [isLoadingImages, images.length, scrollToBottom]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      if (e.nativeEvent.isComposing) return;
+      handleSendMessage(e as unknown as React.FormEvent<HTMLFormElement>);
+    }
+  };
+
+  const handleSendMessage = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!input) return;
+
+    const attachments: IAttachment[] | undefined = selectedFile
+      ? [
+          {
+            url: URL.createObjectURL(selectedFile),
+            contentType: selectedFile.type,
+            title: selectedFile.name,
+          },
+        ]
+      : undefined;
+
+    const newMessages = [
+      {
+        text: input,
+        user: "user",
+        createdAt: Date.now(),
+        attachments,
+      },
+      {
+        text: "",
+        user: "system",
+        isLoading: true,
+        createdAt: Date.now(),
+      },
+    ];
+
+    queryClient.setQueryData(
+      ["messages", agentId],
+      (old: ContentWithUser[] = []) => {
+        console.log("Adding new messages:", newMessages);
+        return [...old, ...newMessages];
+      }
+    );
+
+    sendMessageMutation.mutate({
+      message: input,
+      selectedFile: selectedFile ? selectedFile : null,
+    });
+
+    setSelectedFile(null);
+    setInput("");
+    formRef.current?.reset();
+    scrollToBottom();
+  };
+
+  const sendMessageMutation = useMutation({
+    mutationKey: ["send_message", agentId],
+    mutationFn: ({
+      message,
+      selectedFile,
+    }: {
+      message: string;
+      selectedFile?: File | null;
+    }) => {
+      console.log(`Sending message to: /api/${agentId}/message`);
+      return apiClient.sendMessage(agentId, message, selectedFile);
+    },
+    onSuccess: (newMessages: ContentWithUser[]) => {
+      console.log("Received new messages:", newMessages);
+      queryClient.setQueryData(
+        ["messages", agentId],
+        (old: ContentWithUser[] = []) => {
+          const updated = [
+            ...old.filter((msg) => !msg.isLoading),
+            ...newMessages.map((msg) => ({
+              ...msg,
+              createdAt: msg.createdAt || Date.now(),
+            })),
+          ];
+          console.log("Updated messages cache:", updated);
+          return updated;
+        }
+      );
+      scrollToBottom();
+    },
+    onError: (e: any) => {
+      console.error("Send message error:", e);
+      queryClient.setQueryData(
+        ["messages", agentId],
+        (old: ContentWithUser[] = []) => old.filter((msg) => !msg.isLoading)
+      );
+      toast({
+        variant: "destructive",
+        title: "Unable to send message",
+        description: e.message.includes("Character not found or access denied")
+          ? "This character does not exist or you don't have access."
+          : e.message || "Failed to send message",
+      });
+    },
+  });
+
+  const uploadAgentImageMutation = useMutation({
+    mutationKey: ["upload_agent_image", agentId],
+    mutationFn: (file: File) => {
+      console.log(`Uploading image to: /api/${agentId}/upload-agent-image`);
+      return apiClient.uploadAgentImage(agentId, file);
+    },
+    onSuccess: (data: { message: string; url: string; sanityAssetId: string; caption: string }) => {
+      console.log("Image upload success:", data);
+      const newMessage: ContentWithUser = {
+        text: data.caption || "Image uploaded",
+        user: "user",
+        createdAt: Date.now(),
+        attachments: [
+          {
+            id: data.sanityAssetId,
+            source: "image-upload",
+            description: data.caption,
+            text: data.caption,
+            url: data.url,
+            contentType: "image/*",
+            title: "Uploaded Image",
+          },
+        ],
+      };
+      queryClient.setQueryData(
+        ["messages", agentId],
+        (old: ContentWithUser[] = []) => {
+          const updated = [...old, newMessage];
+          console.log("Updated messages with image:", updated);
+          return updated;
+        }
+      );
+      queryClient.invalidateQueries({ queryKey: ["agent-images", agentId] });
+      toast({
+        title: "Image uploaded",
+        description: "Image added to agent's knowledge and chat.",
+      });
+      setSelectedFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      scrollToBottom();
+    },
+    onError: (error: any) => {
+      console.error("Upload agent image error:", error);
+      toast({
+        variant: "destructive",
+        title: "Unable to upload image",
+        description: error.message || "Failed to upload image",
+      });
+    },
+  });
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file?.type.startsWith("image/")) {
+      setSelectedFile(file);
+    }
+  };
+
+  const handleUploadAgentImage = () => {
+    if (selectedFile) {
+      uploadAgentImageMutation.mutate(selectedFile);
+    } else {
+      toast({
+        variant: "default",
+        title: "No image selected",
+        description: "Please select an image to upload.",
+      });
+    }
+  };
+
+  const messages = queryClient.getQueryData<ContentWithUser[]>(["messages", agentId]) || [];
+
+  const transitions = useTransition(messages, {
+    keys: (message) => `${message.createdAt}-${message.user}-${message.text}`,
+    from: { opacity: 0, transform: "translateY(50px)" },
+    enter: { opacity: 1, transform: "translateY(0px)" },
+    leave: { opacity: 0, transform: "translateY(10px)" },
+  });
+
+  const CustomAnimatedDiv = animated.div as React.FC<AnimatedDivProps>;
+
+  console.log("Chat render");
+  console.log("ChatMessageList props:", { scrollRef, isAtBottom, scrollToBottom, disableAutoScroll });
+  console.log("Images:", images);
+
+  return (
+    <div className="flex flex-col w-full h-[calc(100dvh)] p-4">
+      <div className="flex-1 overflow-y-auto">
+        {/* Image Gallery */}
+        {!isLoadingImages && images.length > 0 && (
+          <div className="mb-4">
+            <h3 className="text-sm font-medium mb-2">Agent Images</h3>
+            <div className="flex overflow-x-auto gap-2 pb-2">
+              {images.map((image) => (
+                <div
+                  key={image.imageAssetId}
+                  className="rounded-md border p-1.5"
+                >
+                  <img
+                    alt={image.caption || "Agent image"}
+                    src={image.imageUrl}
+                    className="w-20 h-20 object-cover rounded"
+                  />
+                  {image.caption && (
+                    <p className="text-xs truncate max-w-[80px] mt-1">
+                      {image.caption}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {/* Loading state for images */}
+        {isLoadingImages && (
+          <div className="mb-4 flex items-center justify-center p-4">
+            <p className="text-sm text-muted-foreground">Loading agent images...</p>
+          </div>
+        )}
+        {/* Error state for images */}
+        {imagesError && (
+          <div className="mb-4 p-2 border border-destructive/20 bg-destructive/10 rounded-md">
+            <p className="text-sm text-destructive">Failed to load agent images</p>
+          </div>
+        )}
+        <ChatMessageList
+          scrollRef={scrollRef}
+          isAtBottom={isAtBottom}
+          scrollToBottom={scrollToBottom}
+          disableAutoScroll={disableAutoScroll}
+        >
+          {transitions((style, message: ContentWithUser) => {
+            const variant = getMessageVariant(message?.user);
+            return (
+              <CustomAnimatedDiv
+                style={{
+                  ...style,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.5rem",
+                  padding: "1rem",
+                }}
+              >
+                <ChatBubble
+                  variant={variant}
+                  className="flex flex-row items-center gap-2"
+                >
+                  {message?.user !== "user" ? (
+                    <Avatar className="size-8 p-1 border rounded-full select-none">
+                      <AvatarImage src="/elizaos-icon.png" />
+                    </Avatar>
+                  ) : null}
+                  <div className="flex flex-col">
+                    <ChatBubbleMessage isLoading={message?.isLoading}>
+                      {message?.user !== "user" ? (
+                        <AIWriter>{message?.text}</AIWriter>
+                      ) : (
+                        message?.text
+                      )}
+                      <div>
+                        {message?.attachments?.map((attachment: IAttachment) => (
+                          <div
+                            className="flex flex-col gap-1 mt-2"
+                            key={`${attachment.url}-${attachment.title}`}
+                          >
+                            <img
+                              alt={attachment.title || "attachment"}
+                              src={attachment.url}
+                              width="100%"
+                              height="100%"
+                              className="w-64 rounded-md"
+                            />
+                            <div className="flex items-center justify-between gap-4">
+                              <span />
+                              <span />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </ChatBubbleMessage>
+                    <div className="flex items-center gap-4 justify-between w-full mt-1">
+                      {message?.text && !message?.isLoading ? (
+                        <div className="flex items-center gap-1">
+                          <CopyButton text={message?.text} />
+                          <ChatTtsButton agentId={agentId} text={message?.text} />
+                        </div>
+                      ) : null}
+                      <div
+                        className={cn([
+                          message?.isLoading ? "mt-2" : "",
+                          "flex items-center justify-between gap-4 select-none",
+                        ])}
+                      >
+                        {message?.source ? (
+                          <Badge variant="outline">{message.source}</Badge>
+                        ) : null}
+                        {message?.action ? (
+                          <Badge variant="outline">{message.action}</Badge>
+                        ) : null}
+                        {message?.createdAt ? (
+                          <ChatBubbleTimestamp
+                            timestamp={moment(message?.createdAt).format("LT")}
+                          />
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                </ChatBubble>
+              </CustomAnimatedDiv>
+            );
+          })}
+        </ChatMessageList>
+      </div>
+      <div className="px-4 pb-4">
+        <form
+          ref={formRef}
+          onSubmit={handleSendMessage}
+          className="relative rounded-md border bg-card"
+        >
+          {selectedFile ? (
+            <div className="p-3 flex">
+              <div className="relative rounded-md border p-2">
+                <Button
+                  onClick={() => setSelectedFile(null)}
+                  className="absolute -right-2 -top-2 size-[22px] ring-2 ring-background"
+                  variant="outline"
+                  size="icon"
+                >
+                  <X />
+                </Button>
+                <img
+                  alt="Selected file"
+                  src={URL.createObjectURL(selectedFile)}
+                  height="100%"
+                  width="100%"
+                  className="aspect-square object-contain w-16"
+                />
+              </div>
+            </div>
+          ) : null}
+          <ChatInput
+            ref={inputRef}
+            onKeyDown={handleKeyDown}
+            value={input}
+            onChange={({ target }) => setInput(target.value)}
+            placeholder="Type your message here..."
+            className="min-h-12 resize-none rounded-md bg-card border-0 p-3 shadow-none focus-visible:ring-0"
+          />
+          <div className="flex items-center p-3 pt-0">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      if (fileInputRef.current) {
+                        fileInputRef.current.click();
+                      }
+                    }}
+                  >
+                    <Paperclip className="size-4" />
+                    <span className="sr-only">Attach file</span>
+                  </Button>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    accept="image/*"
+                    className="hidden"
+                  />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                <p>Attach file</p>
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleUploadAgentImage}
+                  disabled={!selectedFile}
+                >
+                  <ImageIcon className="size-4" />
+                  <span className="sr-only">Upload image to agent</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                <p>Upload image to agent</p>
+              </TooltipContent>
+            </Tooltip>
+            <AudioRecorder
+              agentId={agentId}
+              onChange={(newInput: string) => setInput(newInput)}
+            />
+            <Button
+              disabled={!input || sendMessageMutation?.isPending}
+              type="submit"
+              size="sm"
+              className="ml-auto gap-1.5 h-[30px]"
+            >
+              {sendMessageMutation?.isPending ? "..." : "Send Message"}
+              <Send className="size-3.5" />
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}`
+
+
+
+updaate chat.tsx to be able to reference the uploaded image to the agent.
+`import { Button } from "@/components/ui/button";
+import {
+  ChatBubble,
+  ChatBubbleMessage,
+  ChatBubbleTimestamp,
+} from "@/components/ui/chat/chat-bubble";
+import { ChatInput } from "@/components/ui/chat/chat-input";
+import { ChatMessageList } from "@/components/ui/chat/chat-message-list";
+import { useTransition, animated, type AnimatedProps } from "@react-spring/web";
+import { Paperclip, Send, X, Image as ImageIcon } from "lucide-react";
+import { useEffect, useRef, useState, useCallback } from "react";
+import type { Content, UUID } from "@elizaos/core";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api";
+import { cn, moment } from "@/lib/utils";
+import { Avatar, AvatarImage } from "./ui/avatar";
+import CopyButton from "./copy-button";
+import ChatTtsButton from "./ui/chat/chat-tts-button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import { useToast } from "@/hooks/use-toast";
+import AIWriter from "react-aiwriter";
+import type { IAttachment } from "@/types";
+import { AudioRecorder } from "./audio-recorder";
+import { Badge } from "./ui/badge";
+
+interface ImageItem {
+  imageAssetId: string;
+  imageUrl: string;
+  caption: string;
+  createdAt: string;
+}
+
+type ExtraContentFields = {
+  user: string;
+  createdAt: number;
+  isLoading?: boolean;
+  metadata?: {
+    imageAssetId?: string;
+  };
+};
+
+type ContentWithUser = Content & ExtraContentFields;
+
+type AnimatedDivProps = AnimatedProps<{ style: React.CSSProperties }> & {
+  children?: React.ReactNode;
+  ref?: React.Ref<HTMLDivElement>;
+};
+
+export default function Page({ agentId }: { agentId: UUID }) {
+  const { toast } = useToast();
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [input, setInput] = useState("");
+  const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const queryClient = useQueryClient();
+
+  const {
+    data: images = [],
+    isLoading: isLoadingImages,
+    error: imagesError,
+  } = useQuery({
+    queryKey: ["agent-images", agentId],
+    queryFn: async () => {
+      console.log("Fetching agent images");
+      try {
+        const response = await apiClient.getKnowledge(agentId);
+        const imageCollection = response.knowledge?.find(
+          (k) => k.metadata?.type === "image-collection"
+        );
+        return (imageCollection?.metadata?.images || []) as ImageItem[];
+      } catch (error) {
+        console.error("Failed to fetch agent images:", error);
+        return [];
+      }
+    },
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+
+  const getMessageVariant = (role: string) =>
+    role !== "user" ? "received" : "sent";
+
+  const scrollToBottom = useCallback(() => {
+    console.log("scrollToBottom called");
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, []);
+
+  const isAtBottom = true;
+  const disableAutoScroll = useCallback(() => {
+    console.log("disableAutoScroll called (no-op)");
+  }, []);
+
+  const handleImageSelect = (imageAssetId: string) => {
+    setSelectedImageId(prev => {
+      const newId = prev === imageAssetId ? null : imageAssetId;
+      console.log("Selected image ID:", newId);
+      return newId;
+    });
+  };
+
+  useEffect(() => {
+    console.log("Initial mount, scrolling to bottom");
+    scrollToBottom();
+    inputRef.current?.focus();
+  }, [scrollToBottom]);
+
+  useEffect(() => {
+    if (!isLoadingImages && images.length > 0) {
+      console.log("Images loaded, scrolling to bottom");
+      scrollToBottom();
+    }
+  }, [isLoadingImages, images.length, scrollToBottom]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      if (e.nativeEvent.isComposing) return;
+      handleSendMessage(e as unknown as React.FormEvent<HTMLFormElement>);
+    }
+  };
+
+  const handleSendMessage = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!input) return;
+
+    const attachments: IAttachment[] | undefined = selectedFile
+      ? [
+          {
+            url: URL.createObjectURL(selectedFile),
+            contentType: selectedFile.type,
+            title: selectedFile.name,
+          },
+        ]
+      : undefined;
+
+    const newMessages = [
+      {
+        text: input,
+        user: "user",
+        createdAt: Date.now(),
+        attachments,
+        metadata: selectedImageId ? { imageAssetId: selectedImageId } : undefined,
+      },
+      {
+        text: "",
+        user: "system",
+        isLoading: true,
+        createdAt: Date.now(),
+      },
+    ];
+
+    queryClient.setQueryData(
+      ["messages", agentId],
+      (old: ContentWithUser[] = []) => {
+        console.log("Adding new messages:", newMessages);
+        return [...old, ...newMessages];
+      }
+    );
+
+    sendMessageMutation.mutate({
+      message: input,
+      selectedFile: selectedFile || null,
+      selectedImageId,
+    });
+
+    setSelectedFile(null);
+    setSelectedImageId(null);
+    setInput("");
+    formRef.current?.reset();
+    scrollToBottom();
+  };
+
+  const sendMessageMutation = useMutation({
+    mutationKey: ["send_message", agentId],
+    mutationFn: ({
+      message,
+      selectedFile,
+      selectedImageId,
+    }: {
+      message: string;
+      selectedFile: File | null;
+      selectedImageId: string | null;
+    }) => {
+      console.log(`Sending message to: /api/${agentId}/message`);
+      return apiClient.sendMessage(
+        agentId,
+        message,
+        selectedFile,
+        selectedImageId ? { imageAssetId: selectedImageId } : undefined
+      );
+    },
+    onSuccess: (newMessages: ContentWithUser[]) => {
+      console.log("Received new messages:", newMessages);
+      queryClient.setQueryData(
+        ["messages", agentId],
+        (old: ContentWithUser[] = []) => {
+          const updated = [
+            ...old.filter((msg) => !msg.isLoading),
+            ...newMessages.map((msg) => ({
+              ...msg,
+              createdAt: msg.createdAt || Date.now(),
+            })),
+          ];
+          console.log("Updated messages cache:", updated);
+          return updated;
+        }
+      );
+      scrollToBottom();
+    },
+    onError: (e: any) => {
+      console.error("Send message error:", e);
+      queryClient.setQueryData(
+        ["messages", agentId],
+        (old: ContentWithUser[] = []) => old.filter((msg) => !msg.isLoading)
+      );
+      toast({
+        variant: "destructive",
+        title: "Unable to send message",
+        description: e.message.includes("Character not found or access denied")
+          ? "This character does not exist or you don't have access."
+          : e.message || "Failed to send message",
+      });
+    },
+  });
+
+  const uploadAgentImageMutation = useMutation({
+    mutationKey: ["upload_agent_image", agentId],
+    mutationFn: (file: File) => {
+      console.log(`Uploading image to: /api/${agentId}/upload-agent-image`);
+      return apiClient.uploadAgentImage(agentId, file);
+    },
+    onSuccess: (data: { message: string; url: string; sanityAssetId: string; caption: string }) => {
+      console.log("Image upload success:", data);
+      const newMessage: ContentWithUser = {
+        text: data.caption || "Image uploaded",
+        user: "user",
+        createdAt: Date.now(),
+        attachments: [
+          {
+            id: data.sanityAssetId,
+            source: "image-upload",
+            description: data.caption,
+            text: data.caption,
+            url: data.url,
+            contentType: "image/*",
+            title: "Uploaded Image",
+          },
+        ],
+      };
+      queryClient.setQueryData(
+        ["messages", agentId],
+        (old: ContentWithUser[] = []) => {
+          const updated = [...old, newMessage];
+          console.log("Updated messages with image:", updated);
+          return updated;
+        }
+      );
+      console.log("Invalidating agent-images query");
+      queryClient.invalidateQueries({ queryKey: ["agent-images", agentId] });
+      toast({
+        title: "Image uploaded",
+        description: "Image added to agent's knowledge and chat.",
+      });
+      setSelectedFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      scrollToBottom();
+    },
+    onError: (error: any) => {
+      console.error("Upload agent image error:", error);
+      toast({
+        variant: "destructive",
+        title: "Unable to upload image",
+        description: error.message || "Failed to upload image",
+      });
+    },
+  });
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file?.type.startsWith("image/")) {
+      setSelectedFile(file);
+    }
+  };
+
+  const handleUploadAgentImage = () => {
+    if (selectedFile) {
+      uploadAgentImageMutation.mutate(selectedFile);
+    } else {
+      toast({
+        variant: "default",
+        title: "No image selected",
+        description: "Please select an image to upload.",
+      });
+    }
+  };
+
+  const messages = queryClient.getQueryData<ContentWithUser[]>(["messages", agentId]) || [];
+
+  const transitions = useTransition(messages, {
+    keys: (message) => `${message.createdAt}-${message.user}-${message.text}`,
+    from: { opacity: 0, transform: "translateY(50px)" },
+    enter: { opacity: 1, transform: "translateY(0px)" },
+    leave: { opacity: 0, transform: "translateY(10px)" },
+  });
+
+  // Fix forwardRef for animated.div
+  const CustomAnimatedDiv = animated.div as React.ComponentType<
+    AnimatedDivProps & React.RefAttributes<HTMLDivElement>
+  >;
+
+  console.log("Chat render");
+  console.log("ChatMessageList props:", { scrollRef, isAtBottom, scrollToBottom, disableAutoScroll });
+  console.log("Images:", images);
+  console.log("Selected image ID:", selectedImageId);
+
+  return (
+    <div className="flex flex-col w-full h-[calc(100dvh)] p-4">
+      <div className="flex-1 overflow-y-auto">
+        {!isLoadingImages && images.length > 0 && (
+          <div className="mb-4">
+            <h3 className="text-sm font-medium mb-2">Agent Images</h3>
+            <div className="flex overflow-x-auto gap-2 pb-2">
+              {images.map((image) => (
+                <div
+                  key={image.imageAssetId}
+                  className={cn(
+                    "relative rounded-md border p-1.5 cursor-pointer transition-all",
+                    selectedImageId === image.imageAssetId
+                      ? "border-primary ring-1 ring-primary"
+                      : "hover:border-muted-foreground"
+                  )}
+                  onClick={() => handleImageSelect(image.imageAssetId)}
+                >
+                  <img
+                    alt={image.caption || "Agent image"}
+                    src={image.imageUrl}
+                    className="w-20 h-20 object-cover rounded"
+                  />
+                  {image.caption && (
+                    <p className="text-xs truncate max-w-[80px] mt-1">
+                      {image.caption}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {isLoadingImages && (
+          <div className="mb-4 flex items-center justify-center p-4">
+            <p className="text-sm text-muted-foreground">Loading agent images...</p>
+          </div>
+        )}
+        {imagesError && (
+          <div className="mb-4 p-2 border border-destructive/20 bg-destructive/10 rounded-md">
+            <p className="text-sm text-destructive">Failed to load agent images</p>
+          </div>
+        )}
+        <ChatMessageList
+          scrollRef={scrollRef}
+          isAtBottom={isAtBottom}
+          scrollToBottom={scrollToBottom}
+          disableAutoScroll={disableAutoScroll}
+        >
+          {transitions((style, message: ContentWithUser) => {
+            const variant = getMessageVariant(message?.user);
+            return (
+              <CustomAnimatedDiv
+                style={{
+                  ...style,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.5rem",
+                  padding: "1rem",
+                }}
+              >
+                <ChatBubble
+                  variant={variant}
+                  className="flex flex-row items-center gap-2"
+                >
+                  {message?.user !== "user" ? (
+                    <Avatar className="size-8 p-1 border rounded-full select-none">
+                      <AvatarImage src="/elizaos-icon.png" />
+                    </Avatar>
+                  ) : null}
+                  <div className="flex flex-col">
+                    <ChatBubbleMessage isLoading={message?.isLoading}>
+                      {message?.user !== "user" ? (
+                        <AIWriter>{message?.text}</AIWriter>
+                      ) : (
+                        message?.text
+                      )}
+                      <div>
+                        {message?.attachments?.map((attachment: IAttachment) => (
+                          <div
+                            className="flex flex-col gap-1 mt-2"
+                            key={`${attachment.url}-${attachment.title}`}
+                          >
+                            <img
+                              alt={attachment.title || "attachment"}
+                              src={attachment.url}
+                              width="100%"
+                              height="100%"
+                              className="w-64 rounded-md"
+                            />
+                            <div className="flex items-center justify-between gap-4">
+                              <span />
+                              <span />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {message?.metadata?.imageAssetId && (
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          Referenced image: {
+                            images.find(img => img.imageAssetId === message.metadata?.imageAssetId)?.caption || 
+                            "Image"
+                          }
+                        </div>
+                      )}
+                    </ChatBubbleMessage>
+                    <div className="flex items-center gap-4 justify-between w-full mt-1">
+                      {message?.text && !message?.isLoading ? (
+                        <div className="flex items-center gap-1">
+                          <CopyButton text={message?.text} />
+                          <ChatTtsButton agentId={agentId} text={message?.text} />
+                        </div>
+                      ) : null}
+                      <div
+                        className={cn([
+                          message?.isLoading ? "mt-2" : "",
+                          "flex items-center justify-between gap-4 select-none",
+                        ])}
+                      >
+                        {message?.source ? (
+                          <Badge variant="outline">{message.source}</Badge>
+                        ) : null}
+                        {message?.action ? (
+                          <Badge variant="outline">{message.action}</Badge>
+                        ) : null}
+                        {message?.createdAt ? (
+                          <ChatBubbleTimestamp
+                            timestamp={moment(message?.createdAt).format("LT")}
+                          />
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                </ChatBubble>
+              </CustomAnimatedDiv>
+            );
+          })}
+        </ChatMessageList>
+      </div>
+      <div className="px-4 pb-4">
+        <form
+          ref={formRef}
+          onSubmit={handleSendMessage}
+          className="relative rounded-md border bg-card"
+        >
+          {selectedFile ? (
+            <div className="p-3 flex">
+              <div className="relative rounded-md border p-2">
+                <Button
+                  onClick={() => setSelectedFile(null)}
+                  className="absolute -right-2 -top-2 size-[22px] ring-2 ring-background"
+                  variant="outline"
+                  size="icon"
+                >
+                  <X />
+                </Button>
+                <img
+                  alt="Selected file"
+                  src={URL.createObjectURL(selectedFile)}
+                  height="100%"
+                  width="100%"
+                  className="aspect-square object-contain w-16"
+                />
+              </div>
+            </div>
+          ) : null}
+          <ChatInput
+            ref={inputRef}
+            onKeyDown={handleKeyDown}
+            value={input}
+            onChange={({ target }) => setInput(target.value)}
+            placeholder={selectedImageId ? "Ask about the selected image..." : "Type your message here..."}
+            className="min-h-12 resize-none rounded-md bg-card border-0 p-3 shadow-none focus-visible:ring-0"
+          />
+          <div className="flex items-center p-3 pt-0">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      if (fileInputRef.current) {
+                        fileInputRef.current.click();
+                      }
+                    }}
+                  >
+                    <Paperclip className="size-4" />
+                    <span className="sr-only">Attach file</span>
+                  </Button>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    accept="image/*"
+                    className="hidden"
+                  />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                <p>Attach file</p>
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleUploadAgentImage}
+                  disabled={!selectedFile}
+                >
+                  <ImageIcon className="size-4" />
+                  <span className="sr-only">Upload image to agent</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                <p>Upload image to agent</p>
+              </TooltipContent>
+            </Tooltip>
+            <AudioRecorder
+              agentId={agentId}
+              onChange={(newInput: string) => setInput(newInput)}
+            />
+            <Button
+              disabled={!input || sendMessageMutation.isPending}
+              type="submit"
+              size="sm"
+              className="ml-auto gap-1.5 h-[30px]"
+            >
+              {sendMessageMutation.isPending
+                ? "..."
+                : selectedImageId 
+                  ? "Send with Image" 
+                  : "Send Message"}
+              <Send className="size-3.5" />
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}`
+
+
+
+
+
+

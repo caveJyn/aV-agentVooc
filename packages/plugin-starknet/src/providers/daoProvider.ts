@@ -1,0 +1,1 @@
+// # Merkle tree for membership, vote aggregator (off-chain)

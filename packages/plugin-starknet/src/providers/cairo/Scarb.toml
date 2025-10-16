@@ -1,0 +1,13 @@
+[package]
+name = "btc_calculator"
+version = "0.1.0"
+edition = "2024"
+
+[cairo]
+enable-gas = false
+
+[dependencies]
+
+[scripts]
+calculate_fee = "src/fee.cairo"
+sats_to_btc = "src/conversion.cairo"

@@ -12,6 +12,7 @@ export default defineConfig({
         "mail-notifier",
         "z",
         "@elizaos/core",
-        "@elizaos/core"
+        "@elizaos/core",
+    "@elizaos-plugins/plugin-shared-email-sanity"
     ],
 });

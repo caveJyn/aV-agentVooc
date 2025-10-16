@@ -76,6 +76,22 @@ export default {
                 { name: 'isChunk', type: 'boolean', title: 'Is Chunk' },
                 { name: 'originalId', type: 'string', title: 'Original ID' },
                 { name: 'chunkIndex', type: 'number', title: 'Chunk Index' },
+ {
+          name: 'images',
+          type: 'array',
+          title: 'Images',
+          of: [
+            {
+              type: 'object',
+              fields: [
+                { name: 'imageAssetId', type: 'string', title: 'Image Asset ID' },
+                { name: 'imageUrl', type: 'string', title: 'Image URL' },
+                { name: 'caption', type: 'string', title: 'Caption' },
+                { name: 'createdAt', type: 'datetime', title: 'Created At' },
+              ],
+            },
+          ],
+        },
                 // Allow additional metadata fields dynamically
                 {
                     name: 'customFields',

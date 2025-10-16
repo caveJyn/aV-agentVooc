@@ -11,6 +11,7 @@ export default defineConfig({
     bundle: true,
     splitting: true, // Add this for better code splitting
     dts: true, // Generate declaration files
+    tsconfig: './tsconfig.json',
     external: [
         "dotenv", // Externalize dotenv to prevent bundling
         "fs", // Externalize fs to use Node.js built-in module

@@ -1,0 +1,5 @@
+build:
+  docker:
+    web: Dockerfile.prod
+run:
+  web: sh -c "pnpm --filter '@elizaos/agent' start --port $PORT"

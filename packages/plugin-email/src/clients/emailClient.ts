@@ -6,6 +6,8 @@ import nodemailer, { type Transporter } from "nodemailer";
 import { validateIncomingEmailConfig, validateOutgoingEmailConfig } from "../config/email";
 import { type IncomingConfig, type OutgoingConfig, type SendEmailOptions, type EmailResponse, type ExtendedEmailContent, EmailOutgoingProvider, type SmtpConfig } from "../types";
 import { setupEmailListener } from "../utils/emailListener";
+import { isUserConnected, resolveUserIdFromCreatedBy } from "@elizaos-plugins/plugin-shared-email-sanity";
+import { sanityClient } from "@elizaos-plugins/plugin-shared-email-sanity";
 
 function debounce<T extends (...args: any[]) => void>(func: T, wait: number): (...args: Parameters<T>) => void {
   let timeout: NodeJS.Timeout | null = null;
@@ -83,7 +85,15 @@ class IncomingEmailManager extends EventEmitter {
   async start() {
     elizaLogger.debug(`[IMAP:${this.config.user}] Entering start method`, { userId: this.userId, timestamp: new Date().toISOString() });
     if (this.isDisabled) {
-      elizaLogger.debug(`[IMAP:${this.config.user}] IncomingEmailManager is disabled, assuming user is online`, { userId: this.userId });
+      elizaLogger.debug(`[IMAP:${this.config.user}] IncomingEmailManager is disabled, checking user connection`, { userId: this.userId });
+      const isConnected = await isUserConnected(this.userId).catch(() => true);
+      if (!isConnected) {
+        elizaLogger.debug(`[IMAP:${this.config.user}] User is offline/disconnected, skipping start`, { userId: this.userId });
+        this.lastConnectionStatus = false;
+        await this.stop();
+        return;
+      }
+      elizaLogger.debug(`[IMAP:${this.config.user}] User is now online, enabling`, { userId: this.userId });
       this.isDisabled = false;
     }
     this.lastConnectionStatus = true;
@@ -108,19 +118,28 @@ class IncomingEmailManager extends EventEmitter {
 
   private async connectAndFetch() {
     if (this.isConnecting) {
-      elizaLogger.info(`[IMAP:${this.config.user}] Connection attempt already in progress, skipping`, { userId: this.userId });
+      elizaLogger.debug(`[IMAP:${this.config.user}] Connection attempt already in progress, skipping`, { userId: this.userId });
       return;
     }
     this.isConnecting = true;
     try {
+      const isConnected = await isUserConnected(this.userId).catch(() => true);
+      if (!isConnected) {
+        elizaLogger.debug(`[IMAP:${this.config.user}] User is offline/disconnected, skipping reconnection`, { userId: this.userId });
+        this.isDisabled = true;
+        this.lastConnectionStatus = false;
+        await this.stop();
+        return;
+      }
+      this.lastConnectionStatus = true;
       if (!this.imapClient) {
         this.initializeImapClient();
       }
-      elizaLogger.info(`[IMAP:${this.config.user}] Attempting to connect`, { userId: this.userId });
+      elizaLogger.debug(`[IMAP:${this.config.user}] Attempting to connect`, { userId: this.userId });
       await this.imapClient!.connect();
-      elizaLogger.info(`[IMAP:${this.config.user}] ImapFlow connected successfully`, { userId: this.userId });
+      elizaLogger.debug(`[IMAP:${this.config.user}] ImapFlow connected successfully`, { userId: this.userId });
       await this.imapClient!.mailboxOpen("INBOX");
-      elizaLogger.info(`[IMAP:${this.config.user}] Access to Inbox granted`, { userId: this.userId });
+      elizaLogger.debug(`[IMAP:${this.config.user}] Access to Inbox granted`, { userId: this.userId });
       await this.initialFetch();
       this.setupIdle();
       this.reconnectAttempts = 0;
@@ -207,6 +226,12 @@ class IncomingEmailManager extends EventEmitter {
     this.imapClient.idle().then(() => {
       elizaLogger.debug(`[IMAP:${this.config.user}] IMAP IDLE started`, { userId: this.userId });
       this.imapClient!.on("exists", async (data) => {
+        const isConnected = await isUserConnected(this.userId).catch(() => true);
+        if (!isConnected) {
+          elizaLogger.debug(`[IMAP:${this.config.user}] User is offline/disconnected, stopping IDLE`, { userId: this.userId });
+          await this.stop();
+          return;
+        }
         elizaLogger.debug(`[IMAP:${this.config.user}] Exists event triggered`, {
           userId: this.userId,
           sequence: data.count,
@@ -318,6 +343,12 @@ class IncomingEmailManager extends EventEmitter {
       elizaLogger.debug(`[IMAP:${this.config.user}] Ignoring error due to disabled state`, { userId: this.userId, error: err.message });
       return;
     }
+    const isConnected = await isUserConnected(this.userId).catch(() => true);
+    if (!isConnected) {
+      elizaLogger.debug(`[IMAP:${this.config.user}] User is offline/disconnected, disabling`, { userId: this.userId });
+      await this.stop();
+      return;
+    }
     elizaLogger.error(`[IMAP:${this.config.user}] Connection error`, {
       userId: this.userId,
       error: err.message,
@@ -341,9 +372,9 @@ class IncomingEmailManager extends EventEmitter {
         error: err.message,
         code: err.code,
       });
-      this.imapClient = null;
-      this.isIdleActive = false;
-      this.initializeImapClient();
+      this.imapClient = null; // Ensure client is cleared
+    this.isIdleActive = false;
+    this.initializeImapClient(); // Reinitialize client
     }
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
       const delay = this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts);
@@ -354,8 +385,8 @@ class IncomingEmailManager extends EventEmitter {
       });
       this.intervals.push(setTimeout(() => this.connectAndFetch(), delay));
     } else {
-      elizaLogger.error(`[IMAP:${this.config.user}] Max reconnection attempts reached, disabling`, { userId: this.userId });
       this.isDisabled = true;
+      elizaLogger.error(`[IMAP:${this.config.user}] Max reconnection attempts reached, disabling`, { userId: this.userId });
     }
   }
 
@@ -505,6 +536,8 @@ export class EmailClient {
   private outgoingEmailManager: OutgoingEmailManager | null = null;
   public type = "email";
   private healthCheckInterval: NodeJS.Timeout | null = null;
+  private subscription: any | null = null;
+  private lastIsConnected: boolean | null = null;
 
   constructor(private runtime: IAgentRuntime, private userId: string) {
     elizaLogger.debug(`[EmailClient:${this.userId}] Constructing EmailClient`, { userId, timestamp: new Date().toISOString() });
@@ -541,6 +574,7 @@ export class EmailClient {
         await this.incomingEmailManager.start();
         
         this.setupHealthCheck();
+        this.setupSanitySubscription();
       } else {
         elizaLogger.warn(`[EmailClient:${this.userId}] No incoming config, skipping email receiving`, { userId: this.userId });
       }
@@ -560,18 +594,90 @@ export class EmailClient {
     }
   }
 
-  private setupHealthCheck() {
-    this.healthCheckInterval = setInterval(async () => {
-      elizaLogger.debug(`[EmailClient:${this.userId}] Health check`, { userId: this.userId });
+  private setupSanitySubscription() {
+    const query = `*[_type == "User" && userId == $userId]{isConnected}`;
+    const params = { userId: this.userId };
+    elizaLogger.debug(`[EmailClient:${this.userId}] Setting up Sanity subscription`, { query, params, timestamp: new Date().toISOString() });
+
+    const debouncedHandleSubscription = debounce(async (event: any) => {
+      const isConnected = event.result?.isConnected ?? false;
+      elizaLogger.debug(`[SHARED-EMAIL-SANITY] Processed user connection status`, {
+        userId: this.userId,
+        isConnected,
+        eventType: event.type,
+        eventId: event.eventId,
+        timestamp: new Date().toISOString(),
+      });
+
+      if (isConnected !== this.lastIsConnected) {
+        if (isConnected) {
+          elizaLogger.debug(`[EmailClient:${this.userId}] Sanity subscription: User isConnected changed to true, triggering reconnect`, { userId: this.userId });
+          if (this.incomingEmailManager && !this.incomingEmailManager.getHealthStatus().isHealthy) {
+            await this.incomingEmailManager.reset();
+          } else {
+            elizaLogger.debug(`[EmailClient:${this.userId}] Connection already healthy, skipping reconnect`, { userId: this.userId });
+          }
+        } else {
+          elizaLogger.debug(`[EmailClient:${this.userId}] Sanity subscription: User isConnected changed to false, stopping`, { userId: this.userId });
+          if (this.incomingEmailManager) {
+            await this.incomingEmailManager.stop();
+          }
+        }
+        this.lastIsConnected = isConnected;
+      } else {
+        elizaLogger.debug(`[EmailClient:${this.userId}] No change in isConnected, skipping action`, { userId: this.userId, isConnected });
+      }
+    }, 2000);
+
+    try {
+      this.subscription = sanityClient
+        .listen(query, params, { events: ["welcome", "mutation"], includeResult: true })
+        .subscribe((event: any) => {
+          elizaLogger.debug(`[SHARED-EMAIL-SANITY] Received Sanity event`, {
+            userId: this.userId,
+            eventType: event.type,
+            eventId: event.eventId,
+            isConnected: event.result?.isConnected,
+            timestamp: new Date().toISOString(),
+          });
+          debouncedHandleSubscription(event);
+        });
+      elizaLogger.debug(`[EmailClient:${this.userId}] Subscribed to Sanity User document changes`, { userId: this.userId });
+    } catch (error: any) {
+      elizaLogger.error(`[EmailClient:${this.userId}] Failed to set up Sanity subscription`, { userId: this.userId, error: error.message, stack: error.stack });
+    }
+  }
+
+private setupHealthCheck() {
+  let isChecking = false;
+  this.healthCheckInterval = setInterval(async () => {
+    if (isChecking) {
+      elizaLogger.debug(`[EmailClient:${this.userId}] Health check already in progress, skipping`, { userId: this.userId });
+      return;
+    }
+    isChecking = true;
+    try {
+      const isConnected = await isUserConnected(this.userId);
       const health = this.getHealthStatus();
+      elizaLogger.debug(`[EmailClient:${this.userId}] Health check`, { userId: this.userId, isConnected, health });
+      if (!isConnected) {
+        elizaLogger.debug(`[EmailClient:${this.userId}] User is offline/disconnected, stopping health check`, { userId: this.userId });
+        if (this.incomingEmailManager) {
+          await this.incomingEmailManager.stop();
+        }
+        return;
+      }
       if (!health.isHealthy && Date.now() - health.lastSuccessfulFetch > 15 * 60 * 1000) {
         elizaLogger.error(`[EmailClient:${this.userId}] Email service unhealthy, attempting recovery`, { userId: this.userId, health });
         if (this.incomingEmailManager && !this.incomingEmailManager.getHealthStatus().isHealthy) {
           await this.incomingEmailManager.reset();
         }
       }
-    }, 5 * 60 * 1000);
-  }
+    } finally {
+      isChecking = false;
+    }
+  }, 5 * 60 * 1000);
+}
 
   async send(options: SendEmailOptions): Promise<EmailResponse> {
     if (!this.outgoingEmailManager) {
@@ -598,6 +704,12 @@ export class EmailClient {
       clearInterval(this.healthCheckInterval);
       this.healthCheckInterval = null;
     }
+    if (this.subscription) {
+      this.subscription.unsubscribe();
+      elizaLogger.debug(`[EmailClient:${this.userId}] Unsubscribed from Sanity User document changes`, { userId: this.userId });
+      this.subscription = null;
+    }
+    this.lastIsConnected = null;
   }
 
   public getHealthStatus(): EmailHealthMetrics {
@@ -634,12 +746,31 @@ export const EmailClientInterface: ClientWithType = {
   start: async (runtime: IAgentRuntime) => {
     elizaLogger.debug(`[EmailClientInterface] Entering start method`, {
       characterId: runtime.character.id,
+      createdBy: runtime.character.createdBy,
+      createdByType: typeof runtime.character.createdBy,
       timestamp: new Date().toISOString(),
     });
-    const userId = runtime.character.id;
-    elizaLogger.debug(`[EmailClient:${userId}] Starting EmailClientInterface`, { userId, characterId: runtime.character.id });
-    const client = new EmailClient(runtime, userId);
+    let userId: string;
     try {
+      if (runtime.character.createdBy) {
+        userId = await resolveUserIdFromCreatedBy(runtime.character.createdBy);
+        if (userId === "unknown") {
+          elizaLogger.warn(`[EmailClientInterface] Failed to resolve userId from createdBy`, {
+            createdBy: runtime.character.createdBy,
+            characterId: runtime.character.id,
+          });
+          throw new Error(`Cannot initialize EmailClient: invalid createdBy for character ${runtime.character.id}. Ensure createdBy is a valid reference to a User document.`);
+        }
+      } else {
+        elizaLogger.warn(`[EmailClientInterface] Missing createdBy in character document`, {
+          createdBy: runtime.character.createdBy,
+          characterId: runtime.character.id,
+        });
+        throw new Error(`Cannot initialize EmailClient: missing createdBy for character ${runtime.character.id}. Ensure createdBy is a valid reference to a User document.`);
+      }
+
+      elizaLogger.debug(`[EmailClient:${userId}] Starting EmailClientInterface`, { userId, characterId: runtime.character.id });
+      const client = new EmailClient(runtime, userId);
       await client.initialize();
       return {
         type: "email",

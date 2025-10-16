@@ -2,15 +2,16 @@
 import { createClient } from "@sanity/client";
 import { stringToUuid } from "@elizaos/core";
 
-const client = createClient({
-  projectId: "qtnhvmdn",
-  dataset: "production",
-  apiVersion: "2023-05-03",
+ const client = createClient({
+  projectId: process.env.SANITY_PROJECT_ID ,
+  dataset: process.env.SANITY_DATASET,
+  apiVersion: process.env.SANITY_API_VERSION,
   useCdn: false,
   token: process.env.SANITY_API_TOKEN,
 });
 
 interface CharacterFields {
+  id?: string;
   username?: string;
   system?: string;
   bio?: string[];
@@ -41,6 +42,10 @@ async function createCharacter(name: string, fields: CharacterFields = {}) {
         shared: false,
       },
     ],
+    createdBy: {
+      _type: "reference",
+      _ref: fields.id,
+    },
   };
   try {
     const result = await client.create(doc);
@@ -95,13 +100,13 @@ if (args.length > 0) {
 
 // Example Usage
 /* node scripts/create-character.ts Kaleem --username kaleem --system "You are Kaleem, a knowledgeable AI." --plugins telegram,solana --knowledge-ref 4694d738-583f-4d0a-893f-80ff4579d2ab
-node scripts/create-character.ts Eliza --username eliza --plugins telegram
+node scripts/create-character.ts agentVooc --username eliza --plugins telegram
  */
 
 
 // node scripts/create-character.ts Kaleem --username kaleem --system "You are Kaleem, a knowledgeable AI." --plugins telegram,solana
 // Created character "Kaleem" with id <UUID>
-// node scripts/create-character.ts Eliza --username eliza --plugins telegram
+// node scripts/create-character.ts agentVooc --username eliza --plugins telegram
 
 
 
@@ -220,7 +225,7 @@ import CreateCharacter from "./CreateCharacter";
 function App() {
   return (
     <div>
-      <h1>ElizaOS Dashboard</h1>
+      <h1>agentVooc Dashboard</h1>
       <CreateCharacter />
     </div>
   );

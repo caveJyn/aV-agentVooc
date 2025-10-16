@@ -2,28 +2,9 @@
 import type { Action, ActionExample, HandlerCallback, IAgentRuntime, Memory, State, Content, UUID } from "@elizaos/core";
 import { elizaLogger, stringToUuid, validateUuid } from "@elizaos/core";
 import { EmailClient } from "../clients/emailClient";
-import { Storage } from "@google-cloud/storage";
 import { fetchRecentEmails } from "../utils/bigQuery";
 import { formatEmailForDisplay } from "../utils/formatEmails";
-import { getEmailBody } from "../utils/gcsUtils"
-
-const storage = new Storage();
-const bucketName = 'agentvooc_email_storage';
-
-interface EmailMetadata {
-  from?: { address: string; name?: string }[];
-  subject?: string;
-  date?: string | Date;
-  emailId?: string;
-  messageId?: string;
-  references?: string[];
-  threadId?: string;
-  collection?: string;
-  originalEmailId?: string;
-  originalMessageId?: string;
-  originalThreadId?: string;
-  body?: string;
-}
+import { getEmailBody } from "../utils/bigQuery"
 
 
 interface EmailClientContainer {
@@ -92,14 +73,6 @@ export const checkEmailAction: Action = {
         if (callback) await callback(response);
         return false;
       }
-
-      await emailClient.receive((mail: any) => {
-        elizaLogger.debug("[EMAIL-PLUGIN] Received email during action fetch", {
-          emailUUID: mail.emailUUID,
-          originalEmailId: mail.messageId,
-          from: mail.from?.[0]?.address,
-        });
-      });
 
       const emails = await fetchRecentEmails(runtime.character.id, 50);
       elizaLogger.debug("[EMAIL-PLUGIN] Retrieved emails from BigQuery", {

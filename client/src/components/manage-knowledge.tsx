@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiClient } from "@/lib/api";
+import { apiClient, Knowledge, KnowledgeResponse } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,20 +17,8 @@ interface CharacterResponse {
   character: Character;
 }
 
-interface Knowledge {
-  _id: string;
-  id: string;
-  name: string;
-  text: string;
-  metadata?: object;
-}
-
-interface KnowledgeResponse {
-  knowledge: Knowledge[];
-}
-
 export default function ManageKnowledge({ agentId }: KnowledgeVaultProps) {
-  console.log("[KnowledgeVault] Rendering for agentId:", agentId);
+  // console.log("[KnowledgeVault] Rendering for agentId:", agentId);
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [newKnowledge, setNewKnowledge] = useState({ name: "", text: "", metadata: {} });
@@ -70,7 +58,7 @@ export default function ManageKnowledge({ agentId }: KnowledgeVaultProps) {
 
   const updateKnowledgeMutation = useMutation({
     mutationFn: (knowledge: { name?: string; text?: string; metadata?: object }) => {
-      console.log("[updateKnowledgeMutation] Sending knowledge:", knowledge);
+      // console.log("[updateKnowledgeMutation] Sending knowledge:", knowledge);
       return apiClient.updateKnowledge(agentId, editingKnowledge!.id, knowledge);
     },
     onSuccess: () => {
@@ -112,18 +100,18 @@ export default function ManageKnowledge({ agentId }: KnowledgeVaultProps) {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    console.log("[handleInputChange] Input change:", { name, value });
+    // console.log("[handleInputChange] Input change:", { name, value });
     if (editingKnowledge) {
       setEditingKnowledge((prev) => {
         if (!prev) return prev; // Guard against null/undefined
         const updated = { ...prev, [name]: value };
-        console.log("[handleInputChange] Updated editingKnowledge:", updated);
+        // console.log("[handleInputChange] Updated editingKnowledge:", updated);
         return updated;
       });
     } else {
       setNewKnowledge((prev) => {
         const updated = { ...prev, [name]: value };
-        console.log("[handleInputChange] Updated newKnowledge:", updated);
+        // console.log("[handleInputChange] Updated newKnowledge:", updated);
         return updated;
       });
     }
@@ -137,7 +125,7 @@ export default function ManageKnowledge({ agentId }: KnowledgeVaultProps) {
         text: editingKnowledge.text,
         metadata: editingKnowledge.metadata,
       };
-      console.log("[handleSubmit] Submitting knowledge update:", knowledgeToUpdate);
+      // console.log("[handleSubmit] Submitting knowledge update:", knowledgeToUpdate);
       // Validate that at least one field is non-empty
       if (!knowledgeToUpdate.name && !knowledgeToUpdate.text && Object.keys(knowledgeToUpdate.metadata || {}).length === 0) {
         toast({
@@ -162,7 +150,7 @@ export default function ManageKnowledge({ agentId }: KnowledgeVaultProps) {
   };
 
   const handleEdit = (knowledge: Knowledge) => {
-    console.log("[handleEdit] Setting editingKnowledge:", knowledge);
+    // console.log("[handleEdit] Setting editingKnowledge:", knowledge);
     setEditingKnowledge(knowledge);
   };
 
@@ -177,23 +165,35 @@ export default function ManageKnowledge({ agentId }: KnowledgeVaultProps) {
   };
 
   if (characterQuery.isLoading) {
-    return <p>Loading character settings...</p>;
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-agentvooc-secondary-bg px-4 sm:px-6 lg:px-8">
+        <p className="text-agentvooc-secondary">Loading character settings...</p>
+      </div>
+    );
   }
 
   if (characterQuery.isError) {
-    return <p>Error loading character: {characterQuery.error.message}</p>;
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-agentvooc-secondary-bg px-4 sm:px-6 lg:px-8">
+        <p className="text-red-500">Error loading character: {characterQuery.error.message}</p>
+      </div>
+    );
   }
 
   if (!characterQuery.data?.character?.settings?.ragKnowledge) {
-    return <p>Knowledge feature is not enabled for this character.</p>;
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-agentvooc-secondary-bg px-4 sm:px-6 lg:px-8">
+        <p className="text-agentvooc-secondary">Knowledge feature is not enabled for this character.</p>
+      </div>
+    );
   }
 
   return (
-    <div className="p-4 bg-white border rounded">
-      <h2 className="text-xl font-bold mb-4">Knowledge Vault</h2>
+    <div className="p-6 border border-agentvooc-accent/30 rounded-xl w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+      <h2 className="text-xl font-bold mb-4 text-agentvooc-primary">Knowledge Vault</h2>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+          <label htmlFor="name" className="block text-sm font-medium text-agentvooc-secondary">
             Knowledge Name
           </label>
           <Input
@@ -203,10 +203,11 @@ export default function ManageKnowledge({ agentId }: KnowledgeVaultProps) {
             onChange={handleInputChange}
             placeholder="Enter knowledge name"
             required
+            className="text-agentvooc-primary border-agentvooc-accent/30 bg-agentvooc-secondary-bg"
           />
         </div>
         <div>
-          <label htmlFor="text" className="block text-sm font-medium text-gray-700">
+          <label htmlFor="text" className="block text-sm font-medium text-agentvooc-secondary">
             Content
           </label>
           <Textarea
@@ -216,12 +217,13 @@ export default function ManageKnowledge({ agentId }: KnowledgeVaultProps) {
             onChange={handleInputChange}
             placeholder="Enter knowledge content"
             required
+            className="text-agentvooc-primary border-agentvooc-accent/30 bg-agentvooc-secondary-bg"
           />
         </div>
         <div className="flex gap-2">
           <Button
             type="submit"
-            className="bg-blue-500 text-white hover:bg-blue-600"
+            variant="default"
             disabled={createKnowledgeMutation.isPending || updateKnowledgeMutation.isPending}
           >
             {editingKnowledge ? (
@@ -237,7 +239,6 @@ export default function ManageKnowledge({ agentId }: KnowledgeVaultProps) {
               type="button"
               variant="outline"
               onClick={handleCancelEdit}
-              className="border-gray-300 text-gray-700 hover:bg-gray-100"
             >
               <X className="mr-2 h-4 w-4" /> Cancel
             </Button>
@@ -245,26 +246,25 @@ export default function ManageKnowledge({ agentId }: KnowledgeVaultProps) {
         </div>
       </form>
       <div className="mt-6">
-        <h3 className="text-lg font-semibold mb-2">Existing Knowledge</h3>
+        <h3 className="text-lg font-semibold mb-2 ">Existing Knowledge</h3>
         {knowledgeQuery.isLoading ? (
-          <p>Loading knowledge...</p>
+          <p >Loading knowledge...</p>
         ) : knowledgeQuery.isError ? (
-          <p>Error loading knowledge: {knowledgeQuery.error.message}</p>
+          <p className="text-red-500">Error loading knowledge: {knowledgeQuery.error.message}</p>
         ) : !knowledgeQuery.data || knowledgeQuery.data.knowledge.length === 0 ? (
-          <p>No knowledge entries yet.</p>
+          <p >No knowledge entries yet.</p>
         ) : (
           <ul className="space-y-2">
             {knowledgeQuery.data.knowledge.map((item) => (
-              <li key={item._id} className="border p-2 rounded flex justify-between items-center">
-                <div>
+              <li key={item._id} className="border border-agentvooc-accent/30 p-2 rounded flex justify-between items-center ">
+                <div className="text-agentvooc-primary">
                   <strong>{item.name}</strong>: {item.text}
                 </div>
                 <div className="flex gap-2">
                   <Button
                     size="sm"
-                    variant="outline"
+                    variant="default"
                     onClick={() => handleEdit(item)}
-                    className="border-gray-300 text-gray-700 hover:bg-gray-100"
                   >
                     <Edit2 className="h-4 w-4" />
                   </Button>

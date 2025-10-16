@@ -130,7 +130,7 @@ export class MessageManager {
                 const chat = await this.bot.telegram.getChat(id);
                 if ("username" in chat && chat.username) {
                     this.teamMemberUsernames.set(id, chat.username);
-                    elizaLogger.info(
+                    elizaLogger.debug(
                         `Cached username for team member ${id}: ${chat.username}`
                     );
                 }
@@ -146,16 +146,16 @@ export class MessageManager {
     private _startAutoPostMonitoring(): void {
         // Wait for bot to be ready
         if (this.bot.botInfo) {
-            elizaLogger.info(
+            elizaLogger.debug(
                 "[AutoPost Telegram] Bot ready, starting monitoring"
             );
             this._initializeAutoPost();
         } else {
-            elizaLogger.info(
+            elizaLogger.debug(
                 "[AutoPost Telegram] Bot not ready, waiting for ready event"
             );
             this.bot.telegram.getMe().then(() => {
-                elizaLogger.info(
+                elizaLogger.debug(
                     "[AutoPost Telegram] Bot ready, starting monitoring"
                 );
                 this._initializeAutoPost();
@@ -318,7 +318,7 @@ export class MessageManager {
         if (!mainChannel) return;
 
         try {
-            elizaLogger.info(
+            elizaLogger.debug(
                 `[AutoPost Telegram] Processing pinned message in group ${ctx.chat.id}`
             );
 
@@ -639,7 +639,7 @@ export class MessageManager {
         try {
             let imageUrl: string | null = null;
 
-            elizaLogger.info(`Telegram Message: ${message}`);
+            elizaLogger.debug(`Telegram Message: ${message}`);
 
             if ("photo" in message && message.photo?.length > 0) {
                 const photo = message.photo[message.photo.length - 1];
@@ -690,7 +690,7 @@ export class MessageManager {
             "text" in message &&
             message.text?.includes(`@${this.bot.botInfo?.username}`)
         ) {
-            elizaLogger.info(`Bot mentioned`);
+            elizaLogger.debug(`Bot mentioned`);
             return true;
         }
 
@@ -993,7 +993,7 @@ export class MessageManager {
                 }
             }
 
-            elizaLogger.info(
+            elizaLogger.debug(
                 `${
                     type.charAt(0).toUpperCase() + type.slice(1)
                 } sent successfully: ${mediaPath}`

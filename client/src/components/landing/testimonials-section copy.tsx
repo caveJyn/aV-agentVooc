@@ -86,7 +86,7 @@
 
 //   return (
 //     <section
-//       className="py-16 px-4 bg-gradient-to-b from-agentvooc-primary-bg-dark to-agentvooc-secondary-accent/10"
+//       className="py-16 px-4 bg-gradient-to-b from-agentvooc-primary-bg to-agentvooc-secondary-accent/10"
 //       aria-labelledby="testimonials-heading"
 //     >
 //       <div className="max-w-6xl mx-auto text-center">
@@ -120,7 +120,7 @@
 //               <span
 //                 className={`absolute -bottom-1 left-1/2 transform -translate-x-1/2 text-xs px-2 py-0.5 rounded-full transition-all ${
 //                   index === i
-//                     ? "bg-agentvooc-accent text-agentvooc-primary-bg-dark opacity-100"
+//                     ? "bg-agentvooc-accent text-agentvooc-primary-bg opacity-100"
 //                     : "opacity-0 group-hover:opacity-100 bg-agentvooc-secondary-accent text-agentvooc-primary"
 //                 }`}
 //               >
@@ -160,14 +160,14 @@
 //           <div className="absolute inset-0 flex justify-between items-center px-4 pointer-events-none z-10">
 //             <button
 //               onClick={() => handleNav("prev")}
-//               className="pointer-events-auto w-10 h-10 rounded-full bg-agentvooc-primary-bg-dark/80 text-agentvooc-accent border border-agentvooc-accent/30 shadow-md hover:scale-110 transition-all"
+//               className="pointer-events-auto w-10 h-10 rounded-full bg-agentvooc-primary-bg/80 text-agentvooc-accent border border-agentvooc-accent/30 shadow-md hover:scale-110 transition-all"
 //               aria-label="Previous"
 //             >
 //               ←
 //             </button>
 //             <button
 //               onClick={() => handleNav("next")}
-//               className="pointer-events-auto w-10 h-10 rounded-full bg-agentvooc-primary-bg-dark/80 text-agentvooc-accent border border-agentvooc-accent/30 shadow-md hover:scale-110 transition-all"
+//               className="pointer-events-auto w-10 h-10 rounded-full bg-agentvooc-primary-bg/80 text-agentvooc-accent border border-agentvooc-accent/30 shadow-md hover:scale-110 transition-all"
 //               aria-label="Next"
 //             >
 //               →

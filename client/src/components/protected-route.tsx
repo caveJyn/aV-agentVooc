@@ -1,25 +1,42 @@
-import { useEffect, useState } from "react";
-import { Navigate } from "react-router-dom";
-import { doesSessionExist } from "supertokens-web-js/recipe/session";
+// client/src/components/protected-route.tsx
+import { ReactNode } from "react";
+import { useAuth, useUser } from "@clerk/clerk-react";
+import { Navigate, useLocation } from "react-router-dom";
+import { useSubscriptionStatus } from "@/hooks/stripe-webhook";
+import { Loader2 } from "lucide-react";
 
 interface ProtectedRouteProps {
-    children: React.ReactNode;
+  children: ReactNode;
 }
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
-    const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const { isLoaded, isSignedIn } = useAuth();
+  const { user } = useUser();
+  const location = useLocation();
+  const { data: subscriptionData, isLoading } = useSubscriptionStatus(user?.id);
 
-    useEffect(() => {
-        async function checkSession() {
-            const sessionExists = await doesSessionExist();
-            setIsAuthenticated(sessionExists);
-        }
-        checkSession();
-    }, []);
+  if (!isLoaded || isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-agentvooc-secondary-bg">
+        <Loader2 className="h-8 w-8 animate-spin text-agentvooc-accent" />
+        <p className="ml-3">Loading...</p>
+      </div>
+    );
+  }
 
-    if (isAuthenticated === null) {
-        return <div>Loading...</div>;
-    }
+  if (!isSignedIn || !user) {
+    return <Navigate to="/auth" state={{ from: location }} replace />;
+  }
 
-    return isAuthenticated ? <>{children}</> : <Navigate to="/auth" replace />;
+  if (!subscriptionData || !["active", "trialing", "incomplete"].includes(subscriptionData.status)) {
+    return (
+      <Navigate
+        to="/settings"
+        state={{ from: location, showPaymentPrompt: true }}
+        replace
+      />
+    );
+  }
+
+  return <>{children}</>;
 }

@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "bigquery-agentvooc-elizaos",
+  "private_key_id": "b6e8b85c085408dfad36e3d3f7671156770e2edf",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDBhByXpooSxtEP\nz/tXvsamIohn9kYyDG651982Y9ZG9JrWeEQZzPu2pmjQNyxp7s4qGI7rHZf4cNFp\nvOgq408nGMfgliWKcgZ/nK5bOzMQeuSKJ04Ys1efOePO/Er+BFGZRhVybMeoUy8B\nLJNljtmEPM/CjxpBHQpdan7xlSJPeaQHij5LBJ7oKrh/rR4FhkLpHSt0PVguXJEC\nmCJVKOhkKWr4VoRHrd5qYVvOxRwKiD9LhZ/6FJpZFBhKBYCaCoXKYIGN+8vj5XrH\nWW23QexnO/kjOIXJ34V2McuRiTAMTUUZgki+R41bHd3aEIFvaZl/WXyWq//RoAzx\nxayKsjMpAgMBAAECggEAC+p6Jj5rhx919R7N78fADK/YrWolRWStlsT7qio4ohLi\ny+0I6HvOTh9uGdAj7Hv3dvEfL8wZNQOhaXzn4OgxUgt9F0+3jRBbZRU9SUHacZvX\nocgsz2mPri7O38p6Raz3Z1RA8tRO8Qb6QHzBsMG8lB94fZb5O2Qx5LGvkmmn/LO5\nowlEx54JOswC0S1fClFxVnqOudjIeU0c1Ng3NkcHEWNH6gKj1VvxGOLAWbUScaxK\nKkM7ww8VKciXYiIJJIdgcsWIqnTvNqIl+Bnf9Q7RYZ9iA7CD2bGVjWayDKmJkJXf\nAOtiOhvUDwgJ9zs03j29PfSGC34q/jHH/MVOtv9kjwKBgQD/DyWAP0WML3MXFofu\nVMjRh/no9sfDT1+uZlcjBswE0tOkXFNilNuaKdjP19pgG5EnO+zOJ0LvtDrpiISC\nPL7PeSLTwXXFS9D+y/jhjRYqS7GdfTXHQJjoAFMxLlWV8gOuC/Gu1rKra9cRz3UL\nZKuwzyV8xwu6t0uANPVhW2PCGwKBgQDCOtmKoy6jBQRJcYHKXpcV2EdwAx7XwpAE\n1lv0VPoQXA69K6lxDuoXCE5cKthT6beCOCvdchZi79iyPx1Az4NI0NBZZYb3baZB\nimfe7CzviEE02idwp3G8k8OtXTuk4RJEcIihbCExz41GlaZ2C5dnXBGdzMIE8e9r\nbgm0gKhUCwKBgFTudz9YUlFW740NnJ/5LZHQJKC1pFleEe9h9rwcJE2q4nzFnaKj\nDOkt7Btxti7wnwoggz82hayKKF/hbLZtgeBWZwl6Tzwufd6Kj0qUD4BwCin2KrU5\nxnDiwtEKq8ctepo3MfhVV9OLKmes3D25/Q34PHRrV3WKWaLMf7U2mGZnAoGBAIJ9\ngzXvWB/R+QVWqvpI/nyAp84LaqdOYe++DF1k0fQ3xPc25Em+2WrL+8lUR65osQ9d\nqarHQV8LAK0QVhj60ZsUH0ZQPZLyKeaSlCJizfXHtvdJMYIwHOuy4p4Qq0ekpt8w\nM7svqEWMyb+IPyPDud6JLpSzwg4MdOvaK88HOQ/tAoGBALNrw+V8b12al22LZ/tJ\nfksL9Sa8O6j6wSXscL9hRA7WXuRdjCIfRVgzlVD0S7IRinVGeGrOyTg/k1SPDLyT\nbP47V+7OxBd/cfLjhyhwynE+Odqhzzz2Vor2Djoti77fvHty8/FirYNcOCQbTgMZ\nC5boFFIWjHrH35mPrj7/yR3/\n-----END PRIVATE KEY-----\n",
+  "client_email": "agentvooc-bigquery@bigquery-agentvooc-elizaos.iam.gserviceaccount.com",
+  "client_id": "106582730609683553437",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/agentvooc-bigquery%40bigquery-agentvooc-elizaos.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

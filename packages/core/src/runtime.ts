@@ -278,24 +278,25 @@ export class AgentRuntime implements IAgentRuntime {
             throw new Error("Character input is required");
         }
 
-        elizaLogger.info(`${this.character.name}(${this.agentId}) - Initializing AgentRuntime with options:`, {
+        elizaLogger.debug(`${this.character.name}(${this.agentId}) - Initializing AgentRuntime with options:`, {
             character: opts.character?.name,
             modelProvider: opts.modelProvider,
             characterModelProvider: opts.character?.modelProvider,
         });
 
-        elizaLogger.info(
+        elizaLogger.debug(
             `[AgentRuntime] Process working directory: ${process.cwd()}`,
         );
 
         // Define the root path once
         this.knowledgeRoot = join(
             process.cwd(),
+            "agent",
             "characters",
             "knowledge",
         );
 
-        elizaLogger.info(
+        elizaLogger.debug(
             `[AgentRuntime] Process knowledgeRoot: ${this.knowledgeRoot}`,
         );
 
@@ -351,7 +352,7 @@ export class AgentRuntime implements IAgentRuntime {
 
         this.serverUrl = opts.serverUrl ?? this.serverUrl;
 
-        elizaLogger.info(`${this.character.name}(${this.agentId}) - Setting Model Provider:`, {
+        elizaLogger.debug(`${this.character.name}(${this.agentId}) - Setting Model Provider:`, {
             characterModelProvider: this.character.modelProvider,
             optsModelProvider: opts.modelProvider,
             currentModelProvider: this.modelProvider,
@@ -372,17 +373,17 @@ export class AgentRuntime implements IAgentRuntime {
         this.imageVisionModelProvider =
             this.character.imageVisionModelProvider ?? this.modelProvider;
             
-        elizaLogger.info(
+        elizaLogger.debug(
           `${this.character.name}(${this.agentId}) - Selected model provider:`,
           this.modelProvider
         );
 
-        elizaLogger.info(
+        elizaLogger.debug(
           `${this.character.name}(${this.agentId}) - Selected image model provider:`,
           this.imageModelProvider
         );
 
-        elizaLogger.info(
+        elizaLogger.debug(
             `${this.character.name}(${this.agentId}) - Selected image vision model provider:`,
             this.imageVisionModelProvider
         );
@@ -407,6 +408,9 @@ export class AgentRuntime implements IAgentRuntime {
             ...(opts.character?.plugins ?? []),
             ...(opts.plugins ?? []),
         ];
+
+        this.actions = []; // Ensure actions start empty
+        this.refreshActions(); // Initialize actions from plugins
 
         this.plugins.forEach((plugin) => {
             plugin.actions?.forEach((action) => {
@@ -443,8 +447,27 @@ export class AgentRuntime implements IAgentRuntime {
         });
 
         // this.verifiableInferenceAdapter = opts.verifiableInferenceAdapter;
+        elizaLogger.info(`[RUNTIME] ${this.character.name}(${this.agentId}) - Initial actions:`, this.actions.map(a => a.name));
     }
 
+    // New method to refresh actions based on current plugins
+refreshActions(): void {
+    this.actions = []; // Clear existing actions
+    this.plugins.forEach((plugin) => {
+        plugin.actions?.forEach((action) => {
+            elizaLogger.success(`${this.character.name}(${this.agentId}) - Registering action: ${action.name}`);
+            this.actions.push(action);
+        });
+    });
+    elizaLogger.info(`[RUNTIME] ${this.character.name}(${this.agentId}) - Refreshed actions:`, this.actions.map(a => a.name));
+}
+
+// Update plugins and refresh actions
+updatePlugins(plugins: Plugin[]): void {
+    this.plugins = plugins;
+    this.refreshActions();
+    elizaLogger.debug(`[RUNTIME] ${this.character.name}(${this.agentId}) - Updated plugins:`, plugins.map(p => p.name));
+}
     private async initializeDatabase() {
         // By convention, we create a user and room using the agent id.
         // Memories related to it are considered global context for the agent.
@@ -460,7 +483,7 @@ export class AgentRuntime implements IAgentRuntime {
     }
 
     async initialize() {
-        this.initializeDatabase();
+       await this.initializeDatabase();
 
         for (const [serviceType, service] of this.services.entries()) {
             try {
@@ -493,10 +516,10 @@ export class AgentRuntime implements IAgentRuntime {
             this.character.knowledge &&
             this.character.knowledge.length > 0
         ) {
-            elizaLogger.info(
+            elizaLogger.debug(
                 `[RAG Check] RAG Knowledge enabled: ${this.character.settings.ragKnowledge ? true : false}`,
             );
-            elizaLogger.info(
+            elizaLogger.debug(
                 `[RAG Check] Knowledge items:`,
                 this.character.knowledge,
             );
@@ -539,17 +562,17 @@ export class AgentRuntime implements IAgentRuntime {
                     ]
                   );
         
-                elizaLogger.info(
+                elizaLogger.debug(
                   `[RAG Summary] Found ${directoryKnowledge.length} directories, ${pathKnowledge.length} paths, ${stringKnowledge.length} strings, ${sanityKnowledgeReference.length} Sanity references`,
                 );
 
                 // Process each type of knowledge
                 if (directoryKnowledge.length > 0) {
-                    elizaLogger.info(
+                    elizaLogger.debug(
                         `[RAG Process] Processing directory knowledge sources:`,
                     );
                     for (const dir of directoryKnowledge) {
-                        elizaLogger.info(
+                        elizaLogger.debug(
                             `  - Directory: ${dir.directory} (shared: ${!!dir.shared})`,
                         );
                         await this.processCharacterRAGDirectory(dir);
@@ -557,20 +580,20 @@ export class AgentRuntime implements IAgentRuntime {
                 }
 
                 if (pathKnowledge.length > 0) {
-                    elizaLogger.info(
+                    elizaLogger.debug(
                         `[RAG Process] Processing individual file knowledge sources`,
                     );
                     await this.processCharacterRAGKnowledge(pathKnowledge);
                 }
 
                 if (stringKnowledge.length > 0) {
-                    elizaLogger.info(
+                    elizaLogger.debug(
                         `[RAG Process] Processing direct string knowledge`,
                     );
                     await this.processCharacterRAGKnowledge(stringKnowledge);
                 }
                 // if (sanityKnowledgeReference.length > 0) {
-                //     elizaLogger.info(
+                //     elizaLogger.debug(
                 //       `[RAG Process] Processing Sanity reference knowledge`,
                 //     );
                 //     for (const ref of sanityKnowledgeReference) {
@@ -587,7 +610,7 @@ export class AgentRuntime implements IAgentRuntime {
                 //           agentId: this.agentId,
                 //           query: `*[_id == "${ref._ref}"]`,
                 //         });
-                //         elizaLogger.info(`Fetched Sanity items for ref ${ref._ref}:`, {
+                //         elizaLogger.debug(`Fetched Sanity items for ref ${ref._ref}:`, {
                 //           count: sanityItems.length,
                 //           items: sanityItems.map((item: RAGKnowledgeItem) => ({
                 //             id: item.id,
@@ -596,7 +619,7 @@ export class AgentRuntime implements IAgentRuntime {
                 //         });
                 //         if (sanityItems.length > 0) {
                 //           await this.ragKnowledgeManager.addSanityKnowledge(sanityItems);
-                //           elizaLogger.info(`Processed Sanity reference: ${ref._ref}`);
+                //           elizaLogger.debug(`Processed Sanity reference: ${ref._ref}`);
                 //         } else {
                 //           elizaLogger.warn(`No Sanity items found for ref ${ref._ref}`);
                 //         }
@@ -617,11 +640,11 @@ export class AgentRuntime implements IAgentRuntime {
             }
 
             // After all new knowledge is processed, clean up any deleted files
-            elizaLogger.info(
+            elizaLogger.debug(
                 `[RAG Cleanup] Starting cleanup of deleted knowledge files`,
             );
             await this.ragKnowledgeManager.cleanupDeletedKnowledgeFiles();
-            elizaLogger.info(`[RAG Cleanup] Cleanup complete`);
+            elizaLogger.debug(`[RAG Cleanup] Cleanup complete`);
         }
     }
 
@@ -689,7 +712,7 @@ export class AgentRuntime implements IAgentRuntime {
                 continue;
             }
 
-            elizaLogger.info(
+            elizaLogger.debug(
                 "Processing knowledge for ",
                 this.character.name,
                 " - ",
@@ -818,14 +841,14 @@ export class AgentRuntime implements IAgentRuntime {
                             });
 
                             if (existingContent === content) {
-                                elizaLogger.info(
+                                elizaLogger.debug(
                                     `${isShared ? "Shared knowledge" : "Knowledge"} ${contentItem} unchanged, skipping`,
                                 );
                                 continue;
                             }
 
                             // Content changed, remove old knowledge before adding new
-                            elizaLogger.info(
+                            elizaLogger.debug(
                                 `${isShared ? "Shared knowledge" : "Knowledge"} ${contentItem} changed, updating...`,
                             );
                             await this.ragKnowledgeManager.removeKnowledge(
@@ -836,7 +859,7 @@ export class AgentRuntime implements IAgentRuntime {
                             );
                         }
 
-                        elizaLogger.info(
+                        elizaLogger.debug(
                             `Processing ${fileExtension.toUpperCase()} file content for`,
                             this.character.name,
                             "-",
@@ -859,7 +882,7 @@ export class AgentRuntime implements IAgentRuntime {
                     }
                 } else {
                     // Handle direct knowledge string
-                    elizaLogger.info(
+                    elizaLogger.debug(
                         "Processing direct knowledge for",
                         this.character.name,
                         "-",
@@ -873,7 +896,7 @@ export class AgentRuntime implements IAgentRuntime {
                         });
 
                     if (existingKnowledge.length > 0) {
-                        elizaLogger.info(
+                        elizaLogger.debug(
                             `Direct knowledge ${knowledgeId} already exists, skipping`,
                         );
                         continue;
@@ -916,7 +939,7 @@ export class AgentRuntime implements IAgentRuntime {
         shared?: boolean;
     }) {
         if (!dirConfig.directory) {
-            elizaLogger.info("[RAG Directory] No directory specified");
+            elizaLogger.debug("[RAG Directory] No directory specified");
             return;
         }
 
@@ -928,13 +951,13 @@ export class AgentRuntime implements IAgentRuntime {
             // Check if directory exists
             const dirExists = existsSync(dirPath);
             if (!dirExists) {
-                elizaLogger.info(
+                elizaLogger.debug(
                     `[RAG Directory] Directory does not exist: ${sanitizedDir}`,
                 );
                 return;
             }
 
-            elizaLogger.info(`[RAG Directory] Searching in: ${dirPath}`);
+            elizaLogger.debug(`[RAG Directory] Searching in: ${dirPath}`);
             // Use glob to find all matching files in directory
             const files = await glob("**/*.{md,txt,pdf}", {
                 cwd: dirPath,
@@ -949,7 +972,7 @@ export class AgentRuntime implements IAgentRuntime {
                 return;
             }
 
-            elizaLogger.info(
+            elizaLogger.debug(
                 `[RAG Directory] Found ${files.length} files in ${dirConfig.directory}`,
             );
 
@@ -1015,21 +1038,31 @@ export class AgentRuntime implements IAgentRuntime {
             throw error; // Re-throw to let caller handle it
         }
     }
-    getSetting(key: string) {
-        // check if the key is in the character.settings.secrets object
+    public getSetting(key: string): string | null {
+        // Check if the key is in the character.settings.secrets object
         if (this.character.settings?.secrets?.[key]) {
             return this.character.settings.secrets[key];
         }
-        // if not, check if it's in the settings object
+    
+        // Check dynamic secrets (from Sanity)
+        if (this.character.settings?.secrets?.dynamic) {
+            const secret = Array.isArray(this.character.settings.secrets.dynamic)
+                ? this.character.settings.secrets.dynamic.find(s => s.key === key)
+                : undefined;
+            if (secret) return secret.value;
+        }
+    
+        // Check if the key is in the character.settings object
         if (this.character.settings?.[key]) {
             return this.character.settings[key];
         }
-
-        // if not, check if it's in the settings object
+    
+        // Check if the key is in the global settings object
         if (settings[key]) {
             return settings[key];
         }
-
+    
+        // Return null if no value is found
         return null;
     }
 
@@ -1109,7 +1142,7 @@ export class AgentRuntime implements IAgentRuntime {
             );
 
             if (!action) {
-                elizaLogger.info("Attempting to find action in similes.");
+                elizaLogger.debug("Attempting to find action in similes.");
                 for (const _action of this.actions) {
                     const simileAction = _action.similes.find(
                         (simile) =>
@@ -1145,7 +1178,7 @@ export class AgentRuntime implements IAgentRuntime {
             }
 
             try {
-                elizaLogger.info(
+                elizaLogger.debug(
                     `Executing handler for action: ${action.name}`,
                 );
                 await action.handler(this, message, state, {}, callback);
@@ -1569,7 +1602,7 @@ Text: ${attachment.text}
                 .map((msg) => msg.content.text)
                 .join(" ");
 
-                elizaLogger.info(`[State Knowledge] Querying knowledge for message`, {
+                elizaLogger.debug(`[State Knowledge] Querying knowledge for message`, {
                     messageText: message.content.text.slice(0, 200),
                     recentContext: recentContext.slice(0, 200),
                 });
@@ -1580,7 +1613,7 @@ Text: ${attachment.text}
                 limit: 8,
             });
 
-            elizaLogger.info(`[State Knowledge] Retrieved knowledge items`, {
+            elizaLogger.debug(`[State Knowledge] Retrieved knowledge items`, {
                 count: knowledgeData.length,
                 items: knowledgeData.map(item => ({
                     id: item.id,

@@ -11,7 +11,7 @@ export function BackgroundWrapper({ children, className }: BackgroundWrapperProp
   return (
     <div
       className={cn(
-        "min-h-screen bg-gradient-to-b from-agentvooc-primary-bg to-background",
+        "min-h-screen ",
         className
       )}
     >

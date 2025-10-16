@@ -214,10 +214,10 @@ async function getOnChainEternalAISystemPrompt(
                 args: [new BigNumber(agentId)],
             });
             if (result) {
-                elizaLogger.info("on-chain system-prompt response", result[0]);
+                elizaLogger.debug("on-chain system-prompt response", result[0]);
                 const value = result[0].toString().replace("0x", "");
                 const content = Buffer.from(value, "hex").toString("utf-8");
-                elizaLogger.info("on-chain system-prompt", content);
+                elizaLogger.debug("on-chain system-prompt", content);
                 return await fetchEternalAISystemPrompt(runtime, content);
             } else {
                 return undefined;
@@ -245,11 +245,11 @@ async function fetchEternalAISystemPrompt(
             IPFS,
             "https://gateway.lighthouse.storage/ipfs/"
         );
-        elizaLogger.info("fetch lightHouse", lightHouse);
+        elizaLogger.debug("fetch lightHouse", lightHouse);
         const responseLH = await fetch(lightHouse, {
             method: "GET",
         });
-        elizaLogger.info("fetch lightHouse resp", responseLH);
+        elizaLogger.debug("fetch lightHouse resp", responseLH);
         if (responseLH.ok) {
             const data = await responseLH.text();
             return data;
@@ -258,11 +258,11 @@ async function fetchEternalAISystemPrompt(
                 IPFS,
                 "https://cdn.eternalai.org/upload/"
             );
-            elizaLogger.info("fetch gcs", gcs);
+            elizaLogger.debug("fetch gcs", gcs);
             const responseGCS = await fetch(gcs, {
                 method: "GET",
             });
-            elizaLogger.info("fetch lightHouse gcs", responseGCS);
+            elizaLogger.debug("fetch lightHouse gcs", responseGCS);
             if (responseGCS.ok) {
                 const data = await responseGCS.text();
                 return data;
@@ -317,7 +317,7 @@ function getCloudflareGatewayBaseURL(
     }
 
     const baseURL = `https://gateway.ai.cloudflare.com/v1/${cloudflareAccountId}/${cloudflareGatewayId}/${provider.toLowerCase()}`;
-    elizaLogger.info("Using Cloudflare Gateway:", {
+    elizaLogger.debug("Using Cloudflare Gateway:", {
         provider,
         baseURL,
         accountId: cloudflareAccountId,
@@ -343,7 +343,7 @@ function getCloudflareGatewayBaseURL(
 export async function generateText({
     runtime,
     context,
-    modelClass,
+    modelClass = ModelClass.LARGE,
     tools = {},
     onStepFinish,
     maxSteps = 1,
@@ -371,9 +371,9 @@ export async function generateText({
 
     elizaLogger.log("Generating text...");
 
-    elizaLogger.info("Generating text with options:", {
+    elizaLogger.debug("Generating text with options:", {
         modelProvider: runtime.modelProvider,
-        model: modelClass,
+        model: ModelClass.LARGE,
         // verifiableInference,
     });
     elizaLogger.log("Using provider:", runtime.modelProvider);
@@ -491,7 +491,7 @@ export async function generateText({
             break;
     }
 
-    elizaLogger.info("Selected model:", model);
+    elizaLogger.debug("Selected model:", model);
 
     const modelConfiguration = runtime.character?.settings?.modelConfig;
     const temperature =
@@ -604,14 +604,14 @@ export async function generateText({
                                 runtime.getSetting("ETERNALAI_LOG")
                             )
                         ) {
-                            elizaLogger.info(
+                            elizaLogger.debug(
                                 "Request data: ",
                                 JSON.stringify(options, null, 2)
                             );
                             const clonedResponse = fetching.clone();
                             try {
                                 clonedResponse.json().then((data) => {
-                                    elizaLogger.info(
+                                    elizaLogger.debug(
                                         "Response data: ",
                                         JSON.stringify(data, null, 2)
                                     );
@@ -637,7 +637,7 @@ export async function generateText({
                         );
                     } else {
                         system_prompt = on_chain_system_prompt;
-                        elizaLogger.info(
+                        elizaLogger.debug(
                             "new on-chain system prompt",
                             system_prompt
                         );
@@ -1347,6 +1347,14 @@ export async function generateText({
             }
         }
 
+        // Log both the context and the agent's response before returning
+        elizaLogger.debug("Agent interaction:", {
+            context,
+            response,
+            provider,
+            model,
+        });
+
         return response;
     } catch (error) {
         elizaLogger.error("Error in generateText:", error);
@@ -1422,9 +1430,12 @@ export async function generateShouldRespond({
  * @param chunkSize - The maximum size of each chunk in tokens
  * @param bleed - Number of characters to overlap between chunks (default: 100)
  * @returns Promise resolving to array of text chunks with bleed sections
- */
-export function splitText(content: string, chunkSize: number, bleed: number): string[] {
-    elizaLogger.info('[splitText] Inputs:', {
+ */export function splitText(content: string, chunkSize: number, bleed: number): string[] {
+    if (chunkSize <= bleed) {
+        throw new Error("chunkSize must be greater than bleed");
+    }
+
+    elizaLogger.debug('[splitText] Inputs:', {
         contentLength: content.length,
         chunkSize,
         bleed,
@@ -1432,55 +1443,29 @@ export function splitText(content: string, chunkSize: number, bleed: number): st
     });
 
     const chunks: string[] = [];
+    const step = chunkSize - bleed; // Step size ensures overlap
     let start = 0;
-    let iteration = 0;
-    const maxIterations = Math.ceil(content.length / (chunkSize - bleed));
 
-    try {
-        while (start < content.length) {
-            if (iteration >= maxIterations) {
-                elizaLogger.warn('[splitText] Max iterations reached:', {
-                    start,
-                    contentLength: content.length,
-                    chunkSize,
-                    bleed,
-                    iteration
-                });
-                break;
-            }
-            const end = Math.min(start + chunkSize, content.length);
-            const chunk = content.substring(start, end);
-            elizaLogger.debug('[splitText] Pushing chunk:', {
-                iteration,
-                start,
-                end,
-                chunkLength: chunk.length
-            });
-            chunks.push(chunk);
-            start = end - bleed;
-            iteration++;
-        }
-    } catch (error) {
-        elizaLogger.error('[splitText] Error during chunking:', {
-            error: error.message,
-            stack: error.stack,
+    while (start < content.length) {
+        const end = Math.min(start + chunkSize, content.length);
+        const chunk = content.substring(start, end);
+        elizaLogger.debug('[splitText] Pushing chunk:', {
             start,
-            iteration,
-            chunksLength: chunks.length
+            end,
+            chunkLength: chunk.length
         });
-        throw error;
+        chunks.push(chunk);
+        start += step;
     }
 
     // Calculate totalSize without double-counting bleed overlaps
     let totalSize = 0;
     if (chunks.length > 0) {
-        // First chunk is full length, subsequent chunks add non-overlapping length
-        totalSize = chunks[0].length + (chunks.length - 1) * (chunkSize - bleed);
-        // Cap at content length to avoid overestimation
+        totalSize = chunks[0].length + (chunks.length - 1) * step;
         totalSize = Math.min(totalSize, content.length);
     }
 
-    elizaLogger.info('[splitText] Output:', {
+    elizaLogger.debug('[splitText] Output:', {
         chunkCount: chunks.length,
         totalSize,
         chunks: chunks.map(chunk => chunk.substring(0, 20) + '...')
@@ -1490,9 +1475,9 @@ export function splitText(content: string, chunkSize: number, bleed: number): st
 }
 
 export async function splitChunks(content: string, chunkSize = 1500, bleed = 100): Promise<string[]> {
-    elizaLogger.info('[splitChunks] Starting:', { contentLength: content.length, chunkSize, bleed });
+    elizaLogger.debug('[splitChunks] Starting:', { contentLength: content.length, chunkSize, bleed });
     const chunks = splitText(content, chunkSize, bleed);
-    elizaLogger.info('[splitChunks] Complete:', { chunkCount: chunks.length });
+    elizaLogger.debug('[splitChunks] Complete:', { chunkCount: chunks.length });
     return chunks;
 }
 
@@ -1754,7 +1739,7 @@ export const generateImage = async (
         return { success: false, error: "No model settings available" };
     }
     const model = modelSettings.name;
-    elizaLogger.info("Generating image with options:", {
+    elizaLogger.debug("Generating image with options:", {
         imageModelProvider: model,
     });
 
@@ -1934,7 +1919,7 @@ export const generateImage = async (
                 logs: true,
                 onQueueUpdate: (update) => {
                     if (update.status === "IN_PROGRESS") {
-                        elizaLogger.info(update.logs.map((log) => log.message));
+                        elizaLogger.debug(update.logs.map((log) => log.message));
                     }
                 },
             });

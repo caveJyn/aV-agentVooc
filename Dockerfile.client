@@ -1,0 +1,14 @@
+# Dockerfile.client
+FROM node:23.3.0-slim
+
+RUN npm install -g pnpm@10.12.4
+
+WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/core/package.json packages/core/
+COPY client/package.json client/pnpm-lock.yaml ./client/
+RUN pnpm install --filter=client
+
+COPY client ./
+EXPOSE 5173
+CMD ["pnpm", "--dir", "client", "run", "dev"]

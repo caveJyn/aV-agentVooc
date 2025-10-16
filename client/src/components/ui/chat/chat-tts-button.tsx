@@ -20,16 +20,25 @@ export default function ChatTtsButton({
 
     const mutation = useMutation({
         mutationKey: ["tts", text],
-        mutationFn: () => apiClient.tts(agentId, text),
+        mutationFn: () => {
+            // Example phrase replacements for Urdu
+            const phraseReplacements = [
+                { phrase: "سیونگز اکاؤنٹ", replacement: "Savings account" },
+                { phrase: "Meezan bank", replacement: "میزان بینک" },
+            ];
+
+            return apiClient.tts(agentId, text, phraseReplacements);
+        },
         onSuccess: (data) => {
             setAudioBlob(data);
             play();
         },
-        onError: (e) => {
+        onError: (e: any) => {
+            setPlaying(false);
             toast({
                 variant: "destructive",
                 title: "Unable to read message aloud",
-                description: e.message,
+                description: e.message || "Failed to generate speech",
             });
         },
     });
@@ -38,6 +47,11 @@ export default function ChatTtsButton({
         if (audioRef.current) {
             audioRef.current.play().catch((err) => {
                 console.error("Error playing audio:", err);
+                toast({
+                    variant: "destructive",
+                    title: "Audio playback error",
+                    description: "Failed to play audio",
+                });
             });
         }
         setPlaying(true);
@@ -63,6 +77,8 @@ export default function ChatTtsButton({
             play();
             return;
         }
+
+        mutation.mutate();
     };
 
     const iconClass = "text-[hsl(var(--agentvooc-accent))] size-4";
@@ -91,7 +107,7 @@ export default function ChatTtsButton({
                         variant="ghost"
                         type="button"
                         onClick={() => execute()}
-                        disabled={mutation?.isPending}
+                        disabled={mutation?.isPending || !text}
                         className="text-[hsl(var(--agentvooc-accent))] hover:text-[hsl(var(--agentvooc-primary))]"
                     >
                         {mutation?.isPending ? (
@@ -104,7 +120,7 @@ export default function ChatTtsButton({
                     </Button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="bg-[hsl(var(--agentvooc-secondary-accent))] text-[hsl(var(--agentvooc-primary))] border-[hsl(var(--agentvooc-accent))/30]">
-                    <p>{playing ? "Stop" : "Read aloud"}</p>
+                    <p>{playing ? "Stop" : "Read aloud (Urdu)"}</p>
                 </TooltipContent>
             </Tooltip>
         </div>
